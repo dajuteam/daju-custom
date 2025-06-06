@@ -17,7 +17,7 @@ margin-bottom:10px;
 .banner .slick .slick-dots {
   --dot-width: 8px;
   --dot-height: 8px;
-  bottom: 5px;
+  bottom: 4px;
   z-index: 5;
 }
 
