@@ -4,6 +4,14 @@
   bottom: 2px;
   z-index: 5;
 }
+.slick-dotted.slick-slider{
+margin-bottom:10px;
+  
+}
+
+
+
+
   @media screen and (min-width: 992px) {
 
 .banner .slick .slick-dots {
