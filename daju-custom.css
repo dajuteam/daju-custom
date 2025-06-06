@@ -1,1 +1,15 @@
-
+.banner .slick .slick-dots {
+  --dot-width: 8px;
+  --dot-height: 8px;
+  bottom: 15px;
+  z-index: 5;
+}
+  @media screen and (min-width: 992px) {
+.banner .slick .slick-dots {
+  --dot-width: 5px;
+  --dot-height: 5px;
+  bottom: 2px;
+  z-index: 5;
+}
+    
+  }
