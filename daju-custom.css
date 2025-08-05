@@ -1,3 +1,615 @@
+/* 網站主要內容的CSS */
+ /* 網頁內頁選單歸位正確位置 */
+  :root {
+    scroll-padding-top: 80px;
+  }
+
+
+  /* TOC選單設定 */
+
+  #toc {
+    margin-top: 10px;
+    padding: 10px 26px;
+    border: 1px solid #b3b3b3;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+    display: inline-block;
+    /* 讓 TOC 根據內容自動調整寬度 */
+    max-width: 100%;
+    /* 在手機版和桌面版都不會超過 100% 的寬度 */
+    width: auto;
+    /* 根據內容自適應寬度 */
+  }
+
+  #toc ul {
+    list-style-type: none;
+    padding: 0;
+    display: block;
+    /* 預設為顯示 */
+  }
+
+  #toc ul.hidden {
+    display: none;
+    /* 隱藏 TOC 列表 */
+  }
+
+  #toc-title {
+    margin: 0;
+    font-size: 1.2em;
+    font-weight: bold;
+  }
+
+  #toc ul li {
+    font-size: 1em;
+  }
+
+  /* 隱藏選單按鈕樣式 */
+  #toggle-button {
+    cursor: pointer;
+    color: #8a8a8a;
+    font-weight: normal;
+    margin-left: 10px;
+    font-size: 14px;
+  }
+
+
+
+  /* 選單NEW!的顯示設定 */
+  .new-label::after {
+    content: "NEW!";
+    color: red;
+    font-size: 0.8em;
+    font-weight: bold;
+    font-style: italic;
+  }
+
+  /* 新案上架分隔設定 */
+  .new-divider::after {
+    content: "── ▲ 新案上架 ▲ ──";
+    color: #808080;
+    font-size: 1em;
+  }
+
+
+
+  /* 文章建案cases內容CSS設定 */
+
+  article.cases {
+    color: #4a4a4a;
+    line-height: 1.9em;
+    font-size: 1.1rem;
+  }
+
+
+  article.cases ul {
+    margin: 0;
+    padding: 10px;
+  }
+
+  article.cases li {
+    margin-left: 10px;
+    line-height: 2em;
+  }
+
+  article.cases h2 {
+    padding-left: 18px;
+    border-left: 8px solid #eb6100;
+    margin-top: 50px;
+    margin-bottom: 20px;
+    color: #525252;
+  }
+
+  article.cases h3,
+  article.cases h4 {
+    margin-top: 20px;
+  }
+
+  article.cases .aerial-panorama-iframe {
+    height: 500px;
+    width: 100%;
+  }
+
+  article.cases .youtube-video-iframe {
+    height: 220px;
+    width: 100%;
+  }
+
+  article.cases img {
+    width: 1000px;
+    height: auto;
+  }
+
+  article.news .img-100p,
+  article.cases .img-100p {
+    width: 100%;
+    height: auto;
+  }
+
+
+  /* GOOGLE街景地圖圖標設定   */
+  a.map-link {
+    display: inline-flex;
+    /* 保持內聯排列並支援對齊 */
+    align-items: center;
+    /* 垂直居中對齊 */
+    margin-left: 10px;
+    /* 與前方標題保持間距 */
+  }
+
+  a.map-link img {
+    width: 15px;
+    /* 固定寬度 */
+    margin-right: 5px;
+    /* 圖標與文字之間留間距 */
+  }
+
+
+  /* 連絡我按鈕設定 */
+  /* .contact-btn {
+    margin-top: 20px;
+    text-align: center;
+  }
+  .contact-btn img {
+    display: inline-block;
+    margin: 0 auto;
+    width: 80%;
+    height: auto;
+  } */
+
+
+  /* 廣告欄位設定 */
+  .ad-slot {
+    margin-top: 30px;
+  }
+
+
+  /* 其他字體樣式設定 */
+  .red-font {
+    color: #d60000;
+  }
+
+  .article-link a {
+    color: #eb6100;
+    text-decoration: underline;
+  }
+
+
+  /* === 實價登錄卡片設計 === */
+  .custom-card {
+    max-width: 100%;
+    margin: 20px auto;
+    border-radius: 12px;
+    border: 2px dotted #ffda56;
+    /*box-shadow: 0 3px 5px rgba(0, 0, 0, 0.1);*/
+    background: linear-gradient(to right, #fffaf0, #fff);
+  }
+
+  .card-body-flex {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    gap: 20px;
+  }
+
+  /* === 左側內容 === */
+  .card-left {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .custom-card img.card-icon {
+    width: 50px !important;
+    margin-right: 10px;
+    margin-bottom: 10px;
+  }
+
+  .card-text-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .card-title {
+    font-size: 1.4rem;
+    font-weight: bold;
+    margin: 0;
+    letter-spacing: 1px;
+  }
+
+  .card-subtext {
+    font-size: 0.85rem;
+    color: gray;
+    margin: 0;
+  }
+
+  /* === 按鈕樣式 === */
+  .card-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #ffc107;
+    color: black;
+    font-size: 1.1rem;
+    padding: 12px 20px;
+    border-radius: 10px;
+    text-decoration: none;
+    transition: background-color 0.3s ease;
+    gap: 10px;
+  }
+
+  .card-button:hover {
+    background-color: #ffb326;
+    color: black;
+  }
+
+
+  /* === 電腦版992以上CSS設定 === */
+
+  @media screen and (min-width: 992px) {
+
+    /* 選單設定 */
+    #toc {
+      max-width: 400px;    
+    }
+
+    /* 文章樣式設定 */
+    /* 360全景尺寸設定 */
+    article.cases .aerial-panorama-iframe {
+      height: 800px;
+    }
+    /* youtube尺寸設定 */
+    article.cases .youtube-video-iframe {
+      height: 800px;
+    }
+
+    .contact-btn {
+      text-align: left;
+    }
+
+    .contact-btn img {
+      width: 30% !important;
+      max-width: none;
+    }
+
+     /* === 實價登錄卡片設計 === */
+    .card-body-flex {
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 30px;
+    }
+
+    .card-left {
+      flex-direction: row;
+      align-items: center;
+      text-align: left;
+    }
+
+    .card-icon {
+      margin-bottom: 0;
+      margin-right: 15px;
+      width: 50px;
+    }
+
+    .card-text-group {
+      align-items: flex-start;
+      text-align: left;
+    }
+
+    .card-title {
+      font-size: 1.5rem;
+    }
+
+    .card-button {
+      font-size: 1.3rem;
+      padding: 15px 25px;
+    }
+
+  }
+
+
+/* 金牌業務卡片的CSS */
+
+@import url('https://fonts.googleapis.com/css2?family=Shrikhand&display=swap');
+
+    .expert-card-wrapper {
+      position: relative;
+      padding: 6px;
+      border-radius: 0;
+      overflow: hidden;
+      width: 100%;
+      max-width: 1000px;
+      background: #fff;
+      z-index: 0;
+      line-height: 1.5;
+      letter-spacing: 0px;
+      margin: 20px 0;
+    }
+
+    .expert-card-wrapper::before {
+      content: "";
+      position: absolute;
+      top: -3px;
+      left: -3px;
+      right: -3px;
+      bottom: -3px;
+      border-radius: 0;
+      background: linear-gradient(130deg, #fff6d5, #cfa944, #fff7e7, #ad8214, #ffe799, #cf9f2e, #fff6d5);
+      background-size: 400% 400%;
+      animation: borderFlow 10s linear infinite;
+      z-index: -2;
+      box-shadow: 0 0 16px rgba(255, 215, 0, 0.4);
+    }
+
+    @keyframes borderFlow {
+      0% {
+        background-position: 0% 50%;
+      }
+
+      50% {
+        background-position: 100% 50%;
+      }
+
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+
+    .expert-card {
+      border-radius: 15px;
+      padding: 10px 22px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .expert-pin {
+      width: 6px;
+      height: 6px;
+      background: #c1a75a;
+      border-radius: 50%;
+      position: absolute;
+    }
+
+    .expert-pin-tl {
+      top: 12px;
+      left: 12px;
+    }
+
+    .expert-pin-tr {
+      top: 12px;
+      right: 12px;
+    }
+
+    .expert-pin-bl {
+      bottom: 12px;
+      left: 12px;
+    }
+
+    .expert-pin-br {
+      bottom: 12px;
+      right: 12px;
+    }
+
+    .expert-badge {
+      display: none;
+    }
+
+    .expert-platinum .expert-badge {
+      background: radial-gradient(circle, #f5d770, #b38d0e);
+    }
+
+    .expert-badge i {
+      color: #fff;
+      font-size: 1.8em;
+    }
+
+    @keyframes rotateBadge {
+      0% {
+        transform: rotateY(0deg);
+      }
+
+      100% {
+        transform: rotateY(360deg);
+      }
+    }
+
+    .expert-profile {
+      width: 80px !important;
+      height: 80px !important;
+      border-radius: 12px;
+      border: 4px solid white;
+      object-fit: cover;
+      margin-right: 15px !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .expert-info {
+      flex: 1;
+    }
+
+    .expert-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .expert-platinum .expert-title {
+      color: #9f5f00;
+    }
+
+    .expert-name-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 10px;
+      position: relative;
+      z-index: 10;
+    }
+
+    .expert-name {
+      font-size: 1.6rem;
+      font-weight: bold;
+    }
+
+    .expert-contact-phone {
+      background: linear-gradient(to right, #a45500, #ff9e36);
+    }
+
+    .expert-contact-line {
+      background: linear-gradient(to right, #00a816, #67ca04);
+    }
+
+    .expert-contact {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .expert-contact a {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 10px;
+      border-radius: 50%;
+      font-weight: bold;
+      font-size: 1.1em;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .expert-platinum {
+      background: linear-gradient(135deg, #fff7cd, #ffefbb, #fff7cd, #ffe89c);
+      box-shadow: 0 0 5px #b78009;
+    }
+
+    .expert-platinum .expert-contact a {
+      color: #fff;
+    }
+
+    .expert-footer {
+      font-size: 0.45rem;
+      color: #af885c;
+    }
+
+    .expert-level-mark {
+      position: absolute;
+      right: 18px;
+      top: 10px;
+      font-family: "Shrikhand", serif;
+      font-style: italic;
+      font-size: 1.1rem;
+      color: rgba(196, 155, 90, 0.5);
+      opacity: 0;
+      animation: fadeSlideIn 0.8s ease-out forwards;
+      animation-delay: 1s;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    @keyframes fadeSlideIn {
+      0% {
+        transform: translate(0, 20px);
+        opacity: 0;
+      }
+
+      100% {
+        transform: translate(0, 0);
+        opacity: 0.9;
+      }
+    }
+
+    .expert-contact a span {
+      display: none;
+    }
+
+
+    .expert-title i {
+      animation: rotateBadge 3s linear infinite;
+
+    }
+
+    @media screen and (min-width: 992px) {
+      .expert-card {
+        padding: 28px;
+      }
+
+      .expert-pin {
+        width: 10px;
+        height: 10px;
+      }
+
+      .expert-title {
+        font-size: 1.7rem;
+      }
+
+      .expert-title i {
+        animation: normal;
+
+      }
+
+
+
+
+      .expert-contact a {
+        font-size: 1.4rem;
+        padding: 10px 20px;
+        border-radius: 10px;
+        letter-spacing: 1.1px;
+      }
+
+      .expert-contact a span {
+        display: inline;
+      }
+
+      .expert-badge {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 25px;
+        flex-shrink: 0;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        animation: rotateBadge 3s linear infinite;
+      }
+
+      .expert-profile {
+        width: 120px !important;
+        height: 120px !important;
+        margin-right: 30px !important;
+      }
+
+      .expert-name {
+        font-size: 2.2rem;
+        color: #222;
+      }
+
+      .expert-level-mark {
+        right: -20px;
+        top: 70px;
+        font-size: 6.5rem;
+      }
+
+      .expert-footer {
+        font-size: 0.8rem;
+      }
+    }
+
+
+
+
+
+
+/* 暫時修改的CSS */
+
 /* .header .navbar .navbar-collapse > .navbar-nav > .nav-item:nth-child(4) > .nav-link {
   color: var(--main-color);
 }
