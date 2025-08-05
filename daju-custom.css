@@ -247,6 +247,78 @@
   }
 
 
+
+/* === 實價登錄區塊設計V2 === */
+.real-price-section {
+  max-width: 100%;
+  margin: 20px auto;
+  border-radius: 12px;
+  border: 2px dotted #ffda56;
+  background: linear-gradient(to right, #fffaf0, #fff);
+}
+
+.real-price-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  gap: 20px;
+}
+
+/* === 左側內容 === */
+.real-price-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.real-price-icon {
+  width: 50px !important;
+  margin-right: 10px;
+  margin-bottom: 10px;
+}
+
+.real-price-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.real-price-title {
+  font-size: 1.4rem;
+  font-weight: bold;
+  margin: 0;
+  letter-spacing: 1px;
+}
+
+.real-price-subtext {
+  font-size: 0.85rem;
+  color: gray;
+  margin: 0;
+}
+
+/* === 按鈕樣式 === */
+.real-price-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #ffc107;
+  color: black;
+  font-size: 1.1rem;
+  padding: 12px 20px;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: background-color 0.3s ease;
+  gap: 10px;
+}
+
+.real-price-button:hover {
+  background-color: #ffb326;
+  color: black;
+}
+
   /* === 電腦版992以上CSS設定 === */
 
   @media screen and (min-width: 992px) {
@@ -308,6 +380,40 @@
       font-size: 1.3rem;
       padding: 15px 25px;
     }
+
+ /* === 實價登錄卡片設計v2 === */
+   .real-price-body {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 30px;
+  }
+
+  .real-price-left {
+    flex-direction: row;
+    align-items: center;
+    text-align: left;
+  }
+
+  .real-price-icon {
+    margin-bottom: 0;
+    margin-right: 15px;
+    width: 50px;
+  }
+
+  .real-price-text {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .real-price-title {
+    font-size: 1.5rem;
+  }
+
+  .real-price-button {
+    font-size: 1.3rem;
+    padding: 15px 25px;
+  }
 
   }
 
