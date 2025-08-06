@@ -97,16 +97,16 @@ function injectExpertCard(options) {
   ensureAOSReady(() => {
     try {
       if (!AOS._inited) {
-        AOS.init({ once: true }); // 第一次才 init
+        AOS.init({ once: true });
       }
-      AOS.refresh(); // 再掃描一次
+      AOS.refresh();
     } catch (err) {
       console.warn("AOS 動畫初始化錯誤", err);
     }
   });
 }
 
-// ✅ 自動等待 AOS 載入完成後執行 callback（含容錯）
+// ✅ 等待 AOS 載入完成後執行 callback
 function ensureAOSReady(callback, timeout = 5000) {
   const start = Date.now();
   (function check() {
@@ -119,3 +119,36 @@ function ensureAOSReady(callback, timeout = 5000) {
     }
   })();
 }
+
+// ✅ 自動偵測 global config 並注入
+(function autoInjectCard() {
+  const config = window.expertCardConfig;
+  if (!config) return;
+
+  function whenReady(callback) {
+    if (document.readyState === "complete" || document.readyState === "interactive") {
+      callback();
+    } else {
+      document.addEventListener("DOMContentLoaded", callback);
+    }
+  }
+
+  function waitForInject(callback, timeout = 5000) {
+    const start = Date.now();
+    (function check() {
+      if (typeof injectExpertCard === "function") {
+        callback();
+      } else if (Date.now() - start < timeout) {
+        setTimeout(check, 50);
+      } else {
+        console.warn("❌ injectExpertCard 尚未定義");
+      }
+    })();
+  }
+
+  whenReady(() => {
+    waitForInject(() => {
+      injectExpertCard(config);
+    });
+  });
+})();
