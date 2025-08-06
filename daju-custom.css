@@ -319,7 +319,28 @@
   color: black;
 }
 
-  /* === 電腦版992以上CSS設定 === */
+/* 同仁密碼區CSS設定 */
+        #passwordInput {
+            background-color: #f3f3f3; /* 設定輸入框背景為淺灰色 */
+            border: 1px solid #e0e0e0; /* 設定輸入框邊框為淺灰色 */
+            outline: none; /* 移除點擊時的黑色框線 */
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        #passwordInput:focus {
+            border: 1px solid #A9A9A9; /* 點擊後保持淺灰色邊框，不出現黑色框線 */
+         }
+         #passwordInput::placeholder {
+            color: #B0B0B0;}
+
+        #hiddenContent {
+            display: none; /* 初始隱藏內容 */
+        }
+
+/* ======================================== */
+  /* ======= 電腦版992以上CSS設定 ====== */
+/* ======================================== */
 
   @media screen and (min-width: 992px) {
 
