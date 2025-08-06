@@ -33,34 +33,31 @@ function injectExpertCard(options) {
     end
   } = options;
 
-  // ✅ 取得台灣時間（UTC+8）
+  // ✅ 時間判斷（台灣時區）
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
-
-  // ✅ 若有 start/end，進行時間區間檢查
   if (start && end) {
     const startTime = new Date(start.replace(/-/g, "/") + " GMT+0800");
     const endTime = new Date(end.replace(/-/g, "/") + " GMT+0800");
-
     if (now < startTime || now > endTime) {
-      console.log("目前不在顯示期間，卡片不顯示。");
+      console.log("⏰ 不在顯示期間內，卡片不顯示");
       return;
     }
   }
 
   const levelData = levels[level];
   if (!levelData) {
-    console.error("等級錯誤，請輸入：社區人氣王、社區專家、社區大師");
+    console.error("❌ 等級錯誤，請使用：社區人氣王、社區專家、社區大師");
     return;
   }
 
   const wrapper = document.querySelector(container);
   if (!wrapper) {
-    console.error("找不到容器：" + container);
+    console.error("❌ 找不到容器：" + container);
     return;
   }
 
   const html = `
-    <div class="expert-card-wrapper expert-platinum">
+    <div class="expert-card-wrapper expert-platinum" data-aos="flip-left" data-aos-duration="1000">
       <div class="expert-card expert-platinum">
         <div class="expert-pin expert-pin-tl"></div>
         <div class="expert-pin expert-pin-tr"></div>
@@ -68,7 +65,7 @@ function injectExpertCard(options) {
         <div class="expert-pin expert-pin-br"></div>
 
         <div class="expert-badge"><i class="fas ${levelData.icon}"></i></div>
-        <img alt="頭像" class="expert-profile" src="${image}" />
+        <img alt="頭像" class="expert-profile" data-aos="zoom-in-left" data-aos-delay="300" src="${image}" />
 
         <div class="expert-info">
           <div class="expert-title"><i class="fas ${levelData.icon}"></i>${levelData.title}</div>
@@ -92,15 +89,33 @@ function injectExpertCard(options) {
     </div>
   `;
 
-  // ✅ 注入 HTML
   wrapper.insertAdjacentHTML("beforeend", html);
-
-  // ✅ 強制觸發 before 邊框動畫
   const newCard = wrapper.lastElementChild;
   void newCard.offsetHeight;
 
-  // ✅ 若 AOS 有載入，重新啟用動畫
-  if (typeof AOS !== "undefined" && typeof AOS.refresh === "function") {
-    AOS.refresh();
-  }
+  // ✅ 智慧處理 AOS：載入、init、refresh
+  ensureAOSReady(() => {
+    try {
+      if (!AOS._inited) {
+        AOS.init({ once: true }); // 第一次才 init
+      }
+      AOS.refresh(); // 再掃描一次
+    } catch (err) {
+      console.warn("AOS 動畫初始化錯誤", err);
+    }
+  });
+}
+
+// ✅ 自動等待 AOS 載入完成後執行 callback（含容錯）
+function ensureAOSReady(callback, timeout = 5000) {
+  const start = Date.now();
+  (function check() {
+    if (typeof AOS !== "undefined" && typeof AOS.init === "function") {
+      callback();
+    } else if (Date.now() - start < timeout) {
+      setTimeout(check, 50);
+    } else {
+      console.warn("⚠️ AOS 尚未載入，動畫初始化失敗");
+    }
+  })();
 }
