@@ -60,7 +60,7 @@ function injectExpertCard(options) {
   }
 
   const html = `
-    <div class="expert-card-wrapper expert-platinum" data-aos="flip-left" data-aos-duration="1000">
+    <div class="expert-card-wrapper expert-platinum">
       <div class="expert-card expert-platinum">
         <div class="expert-pin expert-pin-tl"></div>
         <div class="expert-pin expert-pin-tr"></div>
@@ -68,7 +68,7 @@ function injectExpertCard(options) {
         <div class="expert-pin expert-pin-br"></div>
 
         <div class="expert-badge"><i class="fas ${levelData.icon}"></i></div>
-        <img alt="頭像" class="expert-profile" data-aos="zoom-in-left" data-aos-delay="300" src="${image}" />
+        <img alt="頭像" class="expert-profile" src="${image}" />
 
         <div class="expert-info">
           <div class="expert-title"><i class="fas ${levelData.icon}"></i>${levelData.title}</div>
