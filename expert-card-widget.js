@@ -122,8 +122,8 @@ function ensureAOSReady(callback, timeout = 5000) {
 
 // ✅ 自動偵測 global config 並注入
 (function autoInjectCard() {
-  const config = window.expertCardConfig;
-  if (!config) return;
+  const configList = window.expertCardList || (window.expertCardConfig ? [window.expertCardConfig] : []);
+  if (!configList.length) return;
 
   function whenReady(callback) {
     if (document.readyState === "complete" || document.readyState === "interactive") {
@@ -148,7 +148,20 @@ function ensureAOSReady(callback, timeout = 5000) {
 
   whenReady(() => {
     waitForInject(() => {
-      injectExpertCard(config);
+      const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
+      // 篩選出在時間範圍內的卡片
+      const validCard = configList.find(cfg => {
+        const startTime = new Date(cfg.start.replace(/-/g, "/") + " GMT+0800");
+        const endTime = new Date(cfg.end.replace(/-/g, "/") + " GMT+0800");
+        return now >= startTime && now <= endTime;
+      });
+
+      if (validCard) {
+        injectExpertCard(validCard);
+      } else {
+        console.log("⏰ 目前無符合時間的卡片可顯示");
+      }
     });
   });
 })();
+
