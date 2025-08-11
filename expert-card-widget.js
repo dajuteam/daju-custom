@@ -1,5 +1,5 @@
-        /**
-         * Expert Card Injection System - 改進版本（強化：時間區間、連結/電話淨化、IO 降級補圖、圖片優化）20250811V3
+   /**
+         * Expert Card Injection System - 改進版本（強化：時間區間、連結/電話淨化、IO 降級補圖、圖片優化）20250811V4
          */
         (function (window, document) {
             'use strict';
@@ -173,11 +173,10 @@
                 },
 
                 observeAnimations() {
-                    // 檢查瀏覽器支援
+                    // 不支援 IO：先補圖、再顯示（維持你原有降級機制）
                     if (!('IntersectionObserver' in window)) {
                         console.warn('ExpertCard: 瀏覽器不支援 IntersectionObserver');
 
-                        // 先把所有 lazy 圖片預載並（可）預解碼，再顯示卡片，避免閃爍
                         document.querySelectorAll('img[data-src]').forEach(img => {
                             try {
                                 const src = img.dataset.src;
@@ -195,7 +194,6 @@
                             }
                         });
 
-                        // 降級處理：直接顯示所有卡片
                         const cards = document.querySelectorAll('.expert-card-hidden');
                         cards.forEach(card => {
                             card.classList.remove('expert-card-hidden');
@@ -204,26 +202,9 @@
                         return;
                     }
 
-                    // —— 版本設定：預設 v3，若偵測到 v4 再切 —— //
-                    if (!this._animSpec) {
-                        // 預設採用 animate.css v3（與 WOW 版一致）
-                        this._animSpec = { base: 'animated', prefix: '', v4: false };
-                        // 嘗試偵測 v4（若 CSS 尚未載完，預設 v3 也能跑）
-                        try {
-                            const probe = document.createElement('div');
-                            document.body.appendChild(probe);
-                            probe.className = 'animate__animated';
-                            const cs = getComputedStyle(probe);
-                            const isV4 = cs.animationDuration && cs.animationDuration !== '0s';
-                            document.body.removeChild(probe);
-                            if (isV4) this._animSpec = { base: 'animate__animated', prefix: 'animate__', v4: true };
-                        } catch (_) { /* 靜默失敗，維持 v3 預設 */ }
-                    }
-                    const A = this._animSpec;
-                    // —— 偵測結束 —— //
-
+                    // 只針對 v3：animated + <motion/util classes>
                     const targets = document.querySelectorAll('.expert-card-wrapper[data-animate]:not(.expert-observed)');
-                    if (targets.length === 0) return;
+                    if (!targets.length) return;
 
                     const io = new IntersectionObserver(entries => {
                         entries.forEach(entry => {
@@ -234,40 +215,22 @@
                                 // 顯示元素
                                 el.classList.remove('expert-card-hidden');
 
-                                // 讀 data-animate（允許 v3 名稱或 v4 帶前綴；也支援多 token，例如 "flipInY delay-2s faster"）
+                                // 讀 data-animate，支援多個 token；同時把誤填的 v4 前綴移除
+                                // 例： "flipInY delay-2s faster" 或 "animate__flipInY animate__delay-2s"
                                 const raw = (el.dataset.animate || 'flipInY').trim();
-                                const tokens = raw.split(/\s+/).filter(Boolean);
+                                const tokens = raw.split(/\s+/).filter(Boolean).map(t => t.replace(/^animate__/, ''));
 
-                                // 正規化：移除 v4 前綴後，組出 v3 / v4 兩套類名
-                                const v3Tokens = tokens.map(t => t.replace(/^animate__/, ''));
-                                const v4Tokens = v3Tokens.map(t => `animate__${t}`);
+                                // 套用 v3 類名
+                                if (!el.classList.contains('animated')) el.classList.add('animated');
+                                if (tokens.length) el.classList.add(...tokens);
 
-                                // 先用目前設定的版本加 class
-                                if (!el.classList.contains(A.base)) el.classList.add(A.base);
-                                el.classList.add(...(A.v4 ? v4Tokens : v3Tokens));
+                                // 設定時長（v3 用 inline style）
+                                el.style.animationDuration = '1.5s';
 
-                                // 設置動畫時長
-                                if (A.v4) el.style.setProperty('--animate-duration', '1.5s');
-                                else el.style.animationDuration = '1.5s';
+                                // 若被外部 CSS 蓋掉（ex: prefers-reduced-motion），至少確保顯示
+                                // const name = getComputedStyle(el).animationName; // 如需檢查可取消註解
+                                // if (!name || name === 'none') { /* 視需要處理 */ }
 
-                                // 檢查是否真的有動畫（避免載入時序/版本誤判）
-                                let name = '';
-                                try { name = getComputedStyle(el).animationName; } catch (_) { }
-                                if (!name || name === 'none') {
-                                    // 換另一版本或同時加兩套，確保命中
-                                    el.classList.remove(...(A.v4 ? v4Tokens : v3Tokens));
-
-                                    // 同時備妥兩個基底
-                                    if (!el.classList.contains('animated')) el.classList.add('animated');
-                                    if (!el.classList.contains('animate__animated')) el.classList.add('animate__animated');
-
-                                    // 兩套類名都套上
-                                    el.classList.add(...v3Tokens, ...v4Tokens);
-
-                                    // 兩種時長都給
-                                    el.style.animationDuration = '1.5s';
-                                    el.style.setProperty('--animate-duration', '1.5s');
-                                }
                             } catch (err) {
                                 console.error('ExpertCard: 動畫觸發失敗', err);
                                 el.classList.remove('expert-card-hidden');
@@ -277,13 +240,11 @@
                         });
                     }, { threshold: 0.3, rootMargin: '20px' });
 
-                    // 標記已觀察，避免重複
                     targets.forEach(el => {
                         el.classList.add('expert-observed');
                         io.observe(el);
                     });
 
-                    // 儲存觀察者實例
                     this.observers.push(io);
                 },
 
