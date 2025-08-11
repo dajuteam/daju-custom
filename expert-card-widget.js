@@ -1,5 +1,5 @@
    /**
-         * Expert Card Injection System - 改進版本（強化：時間區間、連結/電話淨化、IO 降級補圖、圖片優化）
+         * Expert Card Injection System - 改進版本（強化：時間區間、連結/電話淨化、IO 降級補圖、圖片優化）20250811
          */
         (function (window, document) {
             'use strict';
@@ -102,7 +102,7 @@
                         const fetchPri = isFirst ? 'high' : 'auto';
 
                         return `
-<div class="expert-card-wrapper expert-platinum expert-card-hidden" data-animate="animate__flipInY">
+<div class="expert-card-wrapper expert-platinum expert-card-hidden" data-animate="flipInY">
   <div class="expert-card expert-platinum">
     <div class="expert-badge"><i class="fas ${lvl.icon}"></i></div>
     <img
@@ -177,7 +177,7 @@
                     if (!('IntersectionObserver' in window)) {
                         console.warn('ExpertCard: 瀏覽器不支援 IntersectionObserver');
 
-                        // ✅ 先把所有 lazy 圖片預載並（可）預解碼，再顯示卡片，避免閃爍
+                        // 先把所有 lazy 圖片預載並（可）預解碼，再顯示卡片，避免閃爍
                         document.querySelectorAll('img[data-src]').forEach(img => {
                             try {
                                 const src = img.dataset.src;
@@ -204,6 +204,34 @@
                         return;
                     }
 
+                    // —— 這裡開始：偵測 animate.css 版本 (v3/v4) 並快取 —— //
+                    if (!this._animSpec) {
+                        const probe = document.createElement('div');
+                        document.body.appendChild(probe);
+
+                        // 試 v4：animate__animated
+                        probe.className = 'animate__animated';
+                        let cs = getComputedStyle(probe);
+                        const isV4 = cs.animationDuration && cs.animationDuration !== '0s';
+
+                        // 試 v3：animated
+                        let isV3 = false;
+                        if (!isV4) {
+                            probe.className = 'animated';
+                            cs = getComputedStyle(probe);
+                            isV3 = cs.animationDuration && cs.animationDuration !== '0s';
+                        }
+
+                        document.body.removeChild(probe);
+                        this._animSpec = isV4
+                            ? { base: 'animate__animated', prefix: 'animate__', v4: true }
+                            : isV3
+                                ? { base: 'animated', prefix: '', v4: false }
+                                : { base: null, prefix: '', v4: false }; // 沒載到 animate.css 的安全預設
+                    }
+                    const A = this._animSpec;
+                    // —— 偵測結束 —— //
+
                     const cards = document.querySelectorAll('.expert-card-wrapper[data-animate]:not(.expert-observed)');
                     if (cards.length === 0) return;
 
@@ -211,16 +239,32 @@
                         entries.forEach(entry => {
                             if (entry.isIntersecting) {
                                 const el = entry.target;
-                                const anim = el.dataset.animate;
 
                                 try {
                                     // 移除隱藏狀態
                                     el.classList.remove('expert-card-hidden');
 
-                                    // 加入動畫（注意：不重複加入 animate__animated）
-                                    if (!el.classList.contains('animate__animated')) {
-                                        el.classList.add('animate__animated', anim);
+                                    // 若頁面根本沒有載 animate.css，直接顯示即可
+                                    if (!A.base) {
+                                        el.classList.add('expert-card-fallback');
+                                        observer.unobserve(el);
+                                        return;
+                                    }
+
+                                    // 讀取中立名稱（支援你原本寫的 "animate__flipInY" 或 "flipInY"）
+                                    const raw = el.dataset.animate || 'flipInY';  // 若無動畫 這裡讀取預設值 flipInY
+                                    const clean = raw.replace(/^animate__/, ''); // 去除 v4 前綴（若有）
+                                    const motionClass = `${A.prefix}${clean}`;   // v4: animate__flipInY，v3: flipInY
+
+                                    // 加入動畫 class（避免重複）
+                                    if (!el.classList.contains(A.base)) el.classList.add(A.base);
+                                    if (!el.classList.contains(motionClass)) el.classList.add(motionClass);
+
+                                    // 設定動畫時間：v4 用 CSS 變數，v3 用 animationDuration
+                                    if (A.v4) {
                                         el.style.setProperty('--animate-duration', '1.5s');
+                                    } else {
+                                        el.style.animationDuration = '1.5s';
                                     }
 
                                     observer.unobserve(el);
@@ -246,6 +290,7 @@
                     // 儲存觀察者實例
                     this.observers.push(observer);
                 },
+
 
                 lazyLoadImages() {
                     // 依網路狀態做一點點自適應（保守，不改 CSS）
