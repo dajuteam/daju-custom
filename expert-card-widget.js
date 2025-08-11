@@ -1,368 +1,363 @@
-/**
- * Expert Card Injection System - Ultra Stable Version
- * 穩定性評分：10/10
- */
+   /**
+         * Expert Card Injection System - 改進版本（強化：時間區間、連結/電話淨化、IO 降級補圖、圖片優化）
+         */
+        (function (window, document) {
+            'use strict';
 
-(function(window, document) {
-  'use strict';
+            if (window.ExpertCardSystem) return;
 
-  // 🛡️ 防止重複執行
-  if (window.ExpertCardSystem) {
-    console.warn('ExpertCardSystem already initialized');
-    return;
-  }
+            const ExpertCardSystem = {
+                // 儲存觀察者以便清理
+                observers: [],
 
-  const ExpertCardSystem = {
-    // 配置常數
-    CONFIG: {
-      TIMEZONE: 'Asia/Taipei',
-      AOS_TIMEOUT: 10000,
-      INJECT_TIMEOUT: 10000,
-      RETRY_INTERVAL: 100,
-      MAX_RETRIES: 50
-    },
+                // 供首張圖高優先
+                imageSeq: 0,
 
-    // 等級配置
-    LEVELS: {
-      "社區人氣王": {
-        icon: "fa-fire",
-        title: "【社區人氣王】",
-        mark: "POP",
-        class: "expert-pop"
-      },
-      "社區專家": {
-        icon: "fa-trophy",
-        title: "【社區專家】",
-        mark: "PRO+",
-        class: "expert-pro"
-      },
-      "社區大師": {
-        icon: "fa-crown",
-        title: "【社區大師】",
-        mark: "MASTER",
-        class: "expert-master"
-      }
-    },
+                LEVELS: {
+                    "社區人氣王": { icon: "fa-fire", title: "【社區人氣王】", mark: "POP" },
+                    "社區專家": { icon: "fa-trophy", title: "【社區專家】", mark: "PRO+" },
+                    "社區大師": { icon: "fa-crown", title: "【社區大師】", mark: "MASTER" }
+                },
 
-    // 🕒 穩定的台灣時間獲取
-    getTaiwanTime() {
-      try {
-        // 方法1: 使用 Intl.DateTimeFormat (現代瀏覽器)
-        if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
-          const formatter = new Intl.DateTimeFormat('sv-SE', {
-            timeZone: this.CONFIG.TIMEZONE,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-          });
-          return new Date(formatter.format(new Date()).replace(' ', 'T'));
-        }
-        
-        // 方法2: 使用 toLocaleString (較舊瀏覽器)
-        const now = new Date();
-        const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-        const taiwanTime = new Date(utc + (8 * 3600000)); // UTC+8
-        return taiwanTime;
-      } catch (error) {
-        console.warn('時間獲取異常，使用本地時間:', error);
-        return new Date();
-      }
-    },
+                getTaiwanTime() {
+                    try {
+                        const now = new Date();
+                        const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+                        return new Date(utc + (8 * 3600000));
+                    } catch (error) {
+                        console.warn('ExpertCard: 時間計算錯誤', error);
+                        return new Date();
+                    }
+                },
 
-    // 🔒 參數驗證
-    validateOptions(options) {
-      const required = ['level', 'name', 'phone', 'container'];
-      const missing = required.filter(key => !options[key]);
-      
-      if (missing.length > 0) {
-        throw new Error(`缺少必要參數: ${missing.join(', ')}`);
-      }
+                // ✅ 強化：時間區間（支援只填 start 或只填 end，並視為台灣時間）
+                isInTimeRange(start, end) {
+                    const parseTW = (val) => {
+                        if (!val) return null;
+                        if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
 
-      if (!this.LEVELS[options.level]) {
-        throw new Error(`無效的等級: ${options.level}。可用等級: ${Object.keys(this.LEVELS).join(', ')}`);
-      }
+                        let s = String(val).trim();
+                        s = s.replace(/\//g, '-');                // 支援 YYYY/MM/DD
+                        if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T'); // 空白→T
+                        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) s += 'T00:00:00';              // 只有日期→補時間
+                        if (!/[zZ]|[+\-]\d{2}:\d{2}$/.test(s)) s += '+08:00';             // 補上台灣時區
+                        const d = new Date(s);
+                        return isNaN(d.getTime()) ? null : d;
+                    };
 
-      // 驗證電話號碼格式
-      if (!/^[\d\-\+\(\)\s]+$/.test(options.phone)) {
-        console.warn('電話號碼格式可能不正確:', options.phone);
-      }
+                    try {
+                        const now = this.getTaiwanTime();
+                        const s = parseTW(start);
+                        const e = parseTW(end);
+                        if (s && e) return now >= s && now <= e;
+                        if (s && !e) return now >= s;
+                        if (!s && e) return now <= e;
+                        return true;
+                    } catch (error) {
+                        console.warn('ExpertCard: 時間範圍檢查錯誤', error);
+                        return true;
+                    }
+                },
 
-      return true;
-    },
+                escapeHtml(str) {
+                    if (!str) return '';
+                    const div = document.createElement('div');
+                    div.textContent = str;
+                    return div.innerHTML;
+                },
 
-    // 🕐 時間範圍檢查
-    isInTimeRange(start, end) {
-      if (!start || !end) return true;
+                // ✅ 新增：電話/連結淨化（避免奇怪符號與危險協定）
+                sanitizeTel(raw) {
+                    return raw ? String(raw).replace(/[^\d+]/g, '') : '';
+                },
+                sanitizeHref(raw, allowLine = false) {
+                    if (!raw) return '';
+                    const s = String(raw).trim();
+                    if (/^https?:\/\//i.test(s)) return s;                           // http(s)
+                    if (/^tel:/i.test(s)) return s;                                  // tel:
+                    if (allowLine && /^https?:\/\/(line\.me|lin\.ee)\//i.test(s))    // LINE
+                        return s;
+                    return '';
+                },
 
-      try {
-        const now = this.getTaiwanTime();
-        
-        // 支援多種日期格式
-        const parseDate = (dateStr) => {
-          // YYYY-MM-DD HH:mm:ss 或 YYYY/MM/DD HH:mm:ss
-          const normalized = dateStr.replace(/\-/g, '/');
-          const date = new Date(normalized);
-          
-          if (isNaN(date.getTime())) {
-            throw new Error(`無效的日期格式: ${dateStr}`);
-          }
-          
-          return date;
-        };
+                generateCardHTML(opt) {
+                    try {
+                        // 檢查等級是否存在
+                        const lvl = this.LEVELS[opt.level];
+                        if (!lvl) {
+                            console.warn('ExpertCard: 未知等級', opt.level);
+                            return '';
+                        }
 
-        const startTime = parseDate(start);
-        const endTime = parseDate(end);
+                        const imageSrc = this.escapeHtml(opt.image);
 
-        const inRange = now >= startTime && now <= endTime;
-        
-        if (!inRange) {
-          console.log(`⏰ 不在顯示期間 (${start} ~ ${end})`);
-        }
+                        // ✅ 先淨化電話與連結（顯示文字仍用原字串的 escapeHtml）
+                        const telClean = this.sanitizeTel(opt.phone);
+                        const telHref = telClean ? `tel:${telClean}` : '';
+                        const lineHref = this.sanitizeHref(opt.line, true);
 
-        return inRange;
-      } catch (error) {
-        console.error('時間範圍檢查失敗:', error);
-        return true; // 發生錯誤時預設為顯示
-      }
-    },
+                        // ✅ 圖片：首張高優先（縮短白屏），其餘 lazy
+                        const isFirst = (this.imageSeq++ === 0);
+                        const loading = isFirst ? 'eager' : 'lazy';
+                        const fetchPri = isFirst ? 'high' : 'auto';
 
-    // 🎯 DOM 元素安全獲取
-    getContainer(selector) {
-      try {
-        let container;
-        
-        if (selector.startsWith('#')) {
-          container = document.getElementById(selector.slice(1));
-        } else if (selector.startsWith('.')) {
-          container = document.getElementsByClassName(selector.slice(1))[0];
-        } else {
-          container = document.querySelector(selector);
-        }
-
-        if (!container) {
-          throw new Error(`找不到容器: ${selector}`);
-        }
-
-        return container;
-      } catch (error) {
-        console.error('容器獲取失敗:', error);
-        return null;
-      }
-    },
-
-    // 🛡️ XSS 防護
-    escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text || '';
-      return div.innerHTML;
-    },
-
-    // 🎨 卡片 HTML 生成
-    generateCardHTML(options) {
-      const { level, name, phone, line, license, company, image } = options;
-      const levelData = this.LEVELS[level];
-      
-      // 安全處理所有文本內容
-      const safeName = this.escapeHtml(name);
-      const safePhone = this.escapeHtml(phone);
-      const safeLicense = this.escapeHtml(license || '未提供');
-      const safeCompany = this.escapeHtml(company || '未提供');
-      const safeImage = this.escapeHtml(image || '');
-      const safeLine = line ? this.escapeHtml(line) : '#';
-
-      return `
-        <div class="expert-card-wrapper expert-platinum" data-aos="flip-left" data-aos-duration="1000">
-          <div class="expert-card expert-platinum">
-            <div class="expert-pin expert-pin-tl"></div>
-            <div class="expert-pin expert-pin-tr"></div>
-            <div class="expert-pin expert-pin-bl"></div>
-            <div class="expert-pin expert-pin-br"></div>
-
-            <div class="expert-badge"><i class="fas ${levelData.icon}"></i></div>
-            <img alt="專家頭像" class="expert-profile" data-aos="zoom-in-left" data-aos-delay="300" 
-                 src="${safeImage}" 
-                 onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMzAiIGZpbGw9IiNFNUU3RUIiLz4KPHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSIxOCIgeT0iMTgiPgo8cGF0aCBkPSJNMjAgMjFWMTlBNCA0IDAgMCAwIDEyIDE1SDhBNCA0IDAgMCAwIDQgMTlWMjEiIHN0cm9rZT0iIzlDQTNBRiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPGNpcmNsZSBjeD0iMTIiIGN5PSI3IiByPSI0IiBzdHJva2U9IiM5Q0EzQUYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPgo8L3N2Zz4K'; this.onerror=null;" />
-
-            <div class="expert-info">
-              <div class="expert-title"><i class="fas ${levelData.icon}"></i>${levelData.title}</div>
-
-              <div class="expert-name-row">
-                <div class="expert-name">${safeName}</div>
-                <div class="expert-contact">
-                  <a class="expert-contact-phone" href="tel:${safePhone}" onclick="gtag && gtag('event', 'click_phone', {phone: '${safePhone}'});">
-                    <i class="fas fa-phone-alt"></i><span>${safePhone}</span>
-                  </a>
-                  ${line ? `<a class="expert-contact-line" href="${safeLine}" target="_blank" onclick="gtag && gtag('event', 'click_line', {name: '${safeName}'});">
-                    <i class="fab fa-line"></i><span>LINE</span>
-                  </a>` : ''}
-                </div>
-              </div>
-
-              <div class="expert-footer">證號：${safeLicense}｜經紀業：${safeCompany}</div>
-              <div class="expert-level-mark">${levelData.mark}&nbsp;</div>
-            </div>
-          </div>
+                        return `
+<div class="expert-card-wrapper expert-platinum expert-card-hidden" data-animate="animate__flipInY">
+  <div class="expert-card expert-platinum">
+    <div class="expert-badge"><i class="fas ${lvl.icon}"></i></div>
+    <img
+      alt="頭像"
+      class="expert-profile"
+      src=""
+      data-src="${imageSrc}"
+      loading="${loading}"
+      decoding="async"
+      fetchpriority="${fetchPri}"
+      referrerpolicy="no-referrer"
+      width="120" height="120"
+    />
+    <div class="expert-info">
+      <div class="expert-title"><i class="fas ${lvl.icon}"></i>${lvl.title}</div>
+      <div class="expert-name-row">
+        <div class="expert-name">${this.escapeHtml(opt.name)}</div>
+        <div class="expert-contact">
+          ${telHref ? `
+            <a class="expert-contact-phone" href="${telHref}">
+              <i class="fas fa-phone-alt"></i><span>${this.escapeHtml(opt.phone)}</span>
+            </a>` : ''}
+          ${lineHref ? `
+            <a class="expert-contact-line" href="${lineHref}" target="_blank" rel="noopener noreferrer">
+              <i class="fab fa-line"></i><span>LINE</span>
+            </a>` : ''}
         </div>
-      `;
-    },
+      </div>
+      <div class="expert-footer">證號：${this.escapeHtml(opt.license || '')}｜經紀業：${this.escapeHtml(opt.company || '')}</div>
+      <div class="expert-level-mark">${lvl.mark}&nbsp;</div>
+    </div>
+  </div>
+</div>`;
+                    } catch (error) {
+                        console.error('ExpertCard: HTML生成失敗', error);
+                        return '';
+                    }
+                },
 
-    // 🎭 AOS 動畫處理
-    initAOS() {
-      return new Promise((resolve) => {
-        if (typeof AOS === 'undefined') {
-          console.log('AOS 未載入，跳過動畫初始化');
-          resolve(false);
-          return;
-        }
+                injectExpertCard(opt) {
+                    try {
+                        // 檢查配置完整性
+                        if (!opt || !opt.container || !opt.level || !opt.name) {
+                            console.warn('ExpertCard: 配置不完整', opt);
+                            return false;
+                        }
 
-        try {
-          if (!AOS._inited) {
-            AOS.init({ 
-              once: true,
-              duration: 1000,
-              easing: 'ease-in-out'
+                        const container = document.querySelector(opt.container);
+                        if (!container) {
+                            console.warn('ExpertCard: 找不到容器', opt.container);
+                            return false;
+                        }
+
+                        if (!this.isInTimeRange(opt.start, opt.end)) {
+                            return false;
+                        }
+
+                        const html = this.generateCardHTML(opt);
+                        if (html) {
+                            container.insertAdjacentHTML('beforeend', html);
+                            return true;
+                        }
+                        return false;
+                    } catch (error) {
+                        console.error('ExpertCard: 卡片注入失敗', error);
+                        return false;
+                    }
+                },
+
+                observeAnimations() {
+                    // 檢查瀏覽器支援
+                    if (!('IntersectionObserver' in window)) {
+                        console.warn('ExpertCard: 瀏覽器不支援 IntersectionObserver');
+
+                        // ✅ 先把所有 lazy 圖片預載並（可）預解碼，再顯示卡片，避免閃爍
+                        document.querySelectorAll('img[data-src]').forEach(img => {
+                            try {
+                                const src = img.dataset.src;
+                                if (!src) return;
+                                const pre = new Image();
+                                pre.src = src;
+                                (pre.decode ? pre.decode() : Promise.resolve())
+                                    .catch(() => { })
+                                    .finally(() => {
+                                        img.src = src;
+                                        img.removeAttribute('data-src');
+                                    });
+                            } catch (e) {
+                                console.error('ExpertCard: 圖片載入失敗(降級)', e);
+                            }
+                        });
+
+                        // 降級處理：直接顯示所有卡片
+                        const cards = document.querySelectorAll('.expert-card-hidden');
+                        cards.forEach(card => {
+                            card.classList.remove('expert-card-hidden');
+                            card.classList.add('expert-card-fallback'); // 保持你原本的可見樣式
+                        });
+                        return;
+                    }
+
+                    const cards = document.querySelectorAll('.expert-card-wrapper[data-animate]:not(.expert-observed)');
+                    if (cards.length === 0) return;
+
+                    const observer = new IntersectionObserver(entries => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                const el = entry.target;
+                                const anim = el.dataset.animate;
+
+                                try {
+                                    // 移除隱藏狀態
+                                    el.classList.remove('expert-card-hidden');
+
+                                    // 加入動畫（注意：不重複加入 animate__animated）
+                                    if (!el.classList.contains('animate__animated')) {
+                                        el.classList.add('animate__animated', anim);
+                                        el.style.setProperty('--animate-duration', '1.5s');
+                                    }
+
+                                    observer.unobserve(el);
+                                } catch (error) {
+                                    console.error('ExpertCard: 動畫觸發失敗', error);
+                                    // 至少確保顯示
+                                    el.classList.remove('expert-card-hidden');
+                                    observer.unobserve(el);
+                                }
+                            }
+                        });
+                    }, {
+                        threshold: 0.3,
+                        rootMargin: '20px'
+                    });
+
+                    // 標記已觀察，避免重複
+                    cards.forEach(el => {
+                        el.classList.add('expert-observed');
+                        observer.observe(el);
+                    });
+
+                    // 儲存觀察者實例
+                    this.observers.push(observer);
+                },
+
+                lazyLoadImages() {
+                    // 依網路狀態做一點點自適應（保守，不改 CSS）
+                    const saveData = navigator.connection && navigator.connection.saveData;
+                    const effectiveType = (navigator.connection && navigator.connection.effectiveType) || '';
+                    const isSlow = /^(2g|slow-2g)$/i.test(effectiveType);
+                    const aggressive = !saveData && !isSlow; // 慢網或省流量就不要太早預載
+
+                    // 不支援 IO：直接預載 + 預解碼
+                    if (!('IntersectionObserver' in window)) {
+                        const images = document.querySelectorAll('img[data-src]');
+                        images.forEach(img => {
+                            try {
+                                const src = img.dataset.src;
+                                if (!src) return;
+                                const pre = new Image();
+                                pre.src = src;
+                                (pre.decode ? pre.decode() : Promise.resolve())
+                                    .catch(() => { })
+                                    .finally(() => {
+                                        img.src = src;
+                                        img.removeAttribute('data-src');
+                                    });
+                            } catch (error) {
+                                console.error('ExpertCard: 圖片載入失敗', error);
+                            }
+                        });
+                        return;
+                    }
+
+                    const images = document.querySelectorAll('img[data-src]:not(.expert-image-observed)');
+                    if (images.length === 0) return;
+
+                    // ✅ 提早觀察（預載）：網路好時 500px，慢網/省流時 200px
+                    const margin = aggressive ? '500px 0px' : '200px 0px';
+
+                    const observer = new IntersectionObserver(entries => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting || entry.intersectionRatio > 0) {
+                                const img = entry.target;
+                                observer.unobserve(img);
+                                try {
+                                    const src = img.dataset.src;
+                                    if (!src) return;
+
+                                    // 預解碼再替換，避免卡頓
+                                    const pre = new Image();
+                                    pre.src = src;
+                                    (pre.decode ? pre.decode() : Promise.resolve())
+                                        .catch(() => { })
+                                        .finally(() => {
+                                            img.src = src;
+                                            img.removeAttribute('data-src');
+                                            img.classList.add('expert-img-loaded');
+                                        });
+
+                                } catch (error) {
+                                    console.error('ExpertCard: 圖片載入失敗', error);
+                                }
+                            }
+                        });
+                    }, { rootMargin: margin, threshold: 0.01 });
+
+                    images.forEach(img => {
+                        img.classList.add('expert-image-observed');
+                        observer.observe(img);
+                    });
+
+                    this.observers.push(observer);
+                },
+
+                // 清理資源的方法
+                destroy() {
+                    this.observers.forEach(observer => {
+                        if (observer && typeof observer.disconnect === 'function') {
+                            observer.disconnect();
+                        }
+                    });
+                    this.observers = [];
+                },
+
+                init() {
+                    try {
+                        const list = window.expertCardList || [];
+                        if (list.length === 0) {
+                            console.warn('ExpertCard: 沒有找到 expertCardList');
+                            return;
+                        }
+
+                        // 注入卡片
+                        list.forEach(cfg => this.injectExpertCard(cfg));
+
+                        // 初始化功能
+                        this.lazyLoadImages();
+                        this.observeAnimations();
+
+                    } catch (error) {
+                        console.error('ExpertCard: 初始化失敗', error);
+                    }
+                }
+            };
+
+            window.ExpertCardSystem = ExpertCardSystem;
+
+            // 頁面卸載時清理資源
+            window.addEventListener('beforeunload', () => {
+                ExpertCardSystem.destroy();
             });
-          }
-          AOS.refresh();
-          resolve(true);
-        } catch (error) {
-          console.warn('AOS 初始化失敗:', error);
-          resolve(false);
-        }
-      });
-    },
 
-    // 📤 主要注入函數
-    async injectExpertCard(options) {
-      try {
-        // 1. 參數驗證
-        this.validateOptions(options);
+            // 自動初始化
+            document.readyState === 'loading' ?
+                document.addEventListener('DOMContentLoaded', () => ExpertCardSystem.init()) :
+                ExpertCardSystem.init();
 
-        // 2. 時間檢查
-        if (!this.isInTimeRange(options.start, options.end)) {
-          return { success: false, reason: 'not_in_time_range' };
-        }
-
-        // 3. 獲取容器
-        const container = this.getContainer(options.container);
-        if (!container) {
-          return { success: false, reason: 'container_not_found' };
-        }
-
-        // 4. 檢查是否已存在（防止重複）
-        const existingCard = container.querySelector('.expert-card-wrapper');
-        if (existingCard && options.preventDuplicate !== false) {
-          console.log('容器中已存在專家卡片，跳過注入');
-          return { success: false, reason: 'already_exists' };
-        }
-
-        // 5. 生成並插入 HTML
-        const html = this.generateCardHTML(options);
-        container.insertAdjacentHTML('beforeend', html);
-        
-        const newCard = container.lastElementChild;
-        
-        // 6. 觸發重排以確保元素完全渲染
-        if (newCard) {
-          newCard.offsetHeight;
-        }
-
-        // 7. 初始化動畫
-        await this.initAOS();
-
-        // 8. 追蹤事件
-        if (typeof gtag === 'function') {
-          gtag('event', 'expert_card_displayed', {
-            expert_name: options.name,
-            expert_level: options.level
-          });
-        }
-
-        console.log(`✅ 專家卡片注入成功: ${options.name} (${options.level})`);
-        return { success: true, element: newCard };
-
-      } catch (error) {
-        console.error('❌ 專家卡片注入失敗:', error);
-        return { success: false, reason: 'injection_error', error };
-      }
-    },
-
-    // 🔄 等待條件滿足
-    waitFor(condition, timeout = 10000, interval = 100) {
-      return new Promise((resolve) => {
-        const startTime = Date.now();
-        const check = () => {
-          if (condition()) {
-            resolve(true);
-          } else if (Date.now() - startTime >= timeout) {
-            resolve(false);
-          } else {
-            setTimeout(check, interval);
-          }
-        };
-        check();
-      });
-    },
-
-    // 🚀 自動注入系統
-    async autoInject() {
-      // 等待 DOM 就緒
-      await this.waitFor(() => 
-        document.readyState === 'complete' || document.readyState === 'interactive'
-      );
-
-      // 獲取配置
-      const configList = window.expertCardList || 
-                        (window.expertCardConfig ? [window.expertCardConfig] : []);
-
-      if (!configList.length) {
-        console.log('未找到專家卡片配置');
-        return;
-      }
-
-      // 篩選有效配置
-      const now = this.getTaiwanTime();
-      const validCards = configList.filter(config => {
-        try {
-          return this.isInTimeRange(config.start, config.end);
-        } catch (error) {
-          console.warn('配置時間檢查失敗:', error);
-          return false;
-        }
-      });
-
-      if (validCards.length === 0) {
-        console.log('⏰ 目前無符合時間的卡片可顯示');
-        return;
-      }
-
-      // 注入所有有效卡片
-      const results = await Promise.allSettled(
-        validCards.map(config => this.injectExpertCard(config))
-      );
-
-      // 統計結果
-      const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-      const failed = results.length - successful;
-
-      console.log(`🎯 自動注入完成: 成功 ${successful} 個，失敗 ${failed} 個`);
-    }
-  };
-
-  // 💾 暴露到全域
-  window.ExpertCardSystem = ExpertCardSystem;
-  window.injectExpertCard = (options) => ExpertCardSystem.injectExpertCard(options);
-
-  // 🎬 自動初始化
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => ExpertCardSystem.autoInject());
-  } else {
-    ExpertCardSystem.autoInject();
-  }
-
-  console.log('🎉 ExpertCardSystem v2.0 已初始化');
-
-})(window, document);
+        })(window, document);
