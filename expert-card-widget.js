@@ -14,7 +14,7 @@
                 imageSeq: 0,
 
                 LEVELS: {
-                    "社區人氣王": { icon: "fa-fire", title: "【社區人氣王】", mark: "POP" },
+                    "社區人氣王": { icon: "fa-fire", title: "【社區人氣王】", mark: "HOT" },
                     "社區專家": { icon: "fa-trophy", title: "【社區專家】", mark: "PRO+" },
                     "社區大師": { icon: "fa-crown", title: "【社區大師】", mark: "MASTER" }
                 },
