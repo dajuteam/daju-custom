@@ -473,7 +473,9 @@ margin-bottom:10px;
 }
 
 
-
+.footer .branch-box .info ul li.usertie:before {
+  content: "\f508";
+}
 
   @media screen and (min-width: 992px) {
 
