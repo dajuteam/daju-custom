@@ -280,7 +280,7 @@
             }
 
             .expert-card-wrapper::before {
-                box-shadow: 0 0 16px rgba(106, 70, 19, .715);
+                /* box-shadow: 0 0 16px rgba(106, 70, 19, .715); */
             }
 
             .expert-card {
@@ -299,7 +299,7 @@
             /* 確實關閉桌機旋轉 */
 
             .expert-platinum {
-                box-shadow: 0 0 3px #996a1a;
+                /* box-shadow: 0 0 3px #996a1a; */
             }
 
             .expert-name-row {
@@ -346,7 +346,6 @@
 
             .expert-name {
                 font-size: 2.3rem;
-                color: #222;
                 max-width: 40ch;
                 /* 避免超長姓名撐版 */
             }
