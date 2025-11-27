@@ -1,4 +1,4 @@
-    /* 金牌業務卡片的CSS */
+        /* 金牌業務卡片的CSS */
 
         /* 隱藏狀態 - 完全隱藏，不佔據空間 */
         .expert-card-hidden {
@@ -17,7 +17,8 @@
             transition: all .6s cubic-bezier(.4, 0, .2, 1) !important;
             will-change: transform, opacity;
         }
-         /* 金牌經紀人容器 */
+
+        /* 金牌經紀人容器 */
         .expert-card-wrapper {
             position: relative;
             /* 外框效果由padding控制 */
@@ -75,10 +76,10 @@
         }
 
 
-              /* 卡片金色漸層底內層-固定不動 跟陰影 */
+        /* 卡片金色漸層底內層-固定不動 跟陰影 */
         .expert-platinum {
             /* background: linear-gradient(120deg, rgb(255, 227, 126) 0%, #ffe68d 5%, #fff8d2 15%, #fffbec 20%, #ffe68d 55%, #fff7e0 75%, #fcd36c 100%); */
-            /* box-shadow: 0 0 2px #996a1a;*/
+            /* box-shadow: 0 0 2px #996a1a; */
         }
 
         .expert-badge {
@@ -113,7 +114,6 @@
             margin-right: 15px !important;
             box-shadow: 0 2px 8px rgba(0, 0, 0, .1);
             display: block;
-            /* 避免行內元素間距干擾 */
             aspect-ratio: 1/1;
             /* 穩定佈局比例 */
         }
@@ -143,7 +143,7 @@
         }
 
         .expert-name {
-            font-size: 1.6rem;
+            font-size: 1.7rem;
             font-weight: bold;
             max-width: 100%;
             overflow: hidden;
@@ -204,13 +204,15 @@
         .expert-contact a i.fa-line {
             font-size: 1.5rem;
         }
-   
+
 
         .expert-name-row .expert-contact a {
             color: #fff;
         }
 
         .expert-footer {
+            /* 證號經紀人隱藏 */
+            display: none;
             position: relative;
             z-index: 3;
             font-size: .5rem;
@@ -270,6 +272,7 @@
             }
         }
 
+        /* ------電腦版調整------- */
         @media screen and (min-width:992px) {
             .expert-card-wrapper {
                 /* padding: 6px; */
@@ -282,7 +285,7 @@
 
             .expert-card {
                 border-radius: 15px;
-                padding: 28px;
+                padding: 15px 28px;
             }
 
             .expert-title {
@@ -296,7 +299,7 @@
             /* 確實關閉桌機旋轉 */
 
             .expert-platinum {
-               /* box-shadow: 0 0 3px #996a1a;*/
+                box-shadow: 0 0 3px #996a1a;
             }
 
             .expert-name-row {
@@ -342,7 +345,7 @@
             }
 
             .expert-name {
-                font-size: 2.2rem;
+                font-size: 2.3rem;
                 color: #222;
                 max-width: 40ch;
                 /* 避免超長姓名撐版 */
@@ -350,7 +353,7 @@
 
             .expert-level-mark {
                 right: -20px;
-                top: 70px;
+                top: 34px;
                 font-size: 6.5rem;
             }
 
