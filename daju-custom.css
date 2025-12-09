@@ -344,6 +344,7 @@
     }
 
     #hiddenContent {
+      padding-top:20px;
       display: none;
       /* 初始隱藏內容 */
     }
