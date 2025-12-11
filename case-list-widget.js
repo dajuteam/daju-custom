@@ -1,14 +1,18 @@
 /**
- * 房地產物件列表 Widget (Mobile First 992px 最終版)
- * 功能：自動注入您指定的 CSS、FontAwesome，並抓取 GAS 資料顯示
+ * 房地產物件列表 Widget (Final Version)
+ * 樣式：Mobile First (100%), Desktop (Max 1000px), Left Aligned
+ * 功能：自動注入 CSS/Icons, 抓取 GAS 資料, 顯示更多按鈕
  */
 
 (function() {
-  // ⚡ 設定：請務必將此處換成您部署後的 GAS Web App URL
+  // ============================================================
+  // ⚡ 設定區：請務必將此處換成您部署後的 GAS Web App URL
+  // ============================================================
   const API_URL = "https://script.google.com/macros/s/AKfycbzYEl_YplYAycT7ivxvlnSzWYOB91Yy9ucw3yXqW0GiD0GX12LPcPvp_lA16M4iEC-eew/exec"; 
 
   // 設定顯示上限 (超過此數量顯示按鈕)
   const MAX_VISIBLE_ITEMS = 5;
+
 
   // ==============================================
   // 1. 自動注入樣式 (CSS + Font Awesome)
@@ -28,13 +32,18 @@
       /* 1. 外層容器 */
       .case-list-container {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        
+        /* 寬度設定：預設 100% (手機優先) */
         width: 100%;
-        margin: 20px auto;
+        
+        /* 對齊設定：靠左對齊 (上下20px, 左右0) */
+        margin: 20px 0; 
+        
         background: #fff;
         padding: 15px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         box-sizing: border-box;
-        border-radius: 8px; /* 加一點圓角 */
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
       }
 
       /* 2. 標題區 */
@@ -190,7 +199,8 @@
          ★ 電腦版樣式覆蓋 (min-width: 992px) ★
          ========================================= */
       @media (min-width: 992px) {
-        .case-list-container { max-width: 992px; } /* 限制最大寬度 */
+        /* 電腦版限制最大寬度為 1000px */
+        .case-list-container { max-width: 1000px; } 
 
         .case-list-item {
           flex-direction: row;        /* 改回橫向 */
@@ -267,7 +277,7 @@
       return priceA - priceB;
     });
 
-    // 標題與數量
+    // 組裝 HTML
     let html = `
       <div class="case-list-container">
         <div class="case-list-header">
