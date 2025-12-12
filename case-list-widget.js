@@ -106,7 +106,6 @@
       /* --- 連結與內容 --- */
       .case-list-link {
         text-decoration: none;
-        color: #333;
         display: flex;
         align-items: flex-start;
         width: 100%;
