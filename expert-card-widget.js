@@ -1,9 +1,7 @@
 /**
- * 金牌經紀人 Widget (Original Logic Restored)
- * 功能：
- * 1. 鎖定 id="expert-container"
- * 2. 注入 100% 原版 CSS (無修改)
- * 3. 邏輯修復：無資料時使用 container.style.display = 'none' 強制隱藏
+ * 金牌經紀人 Widget (Final Integrated Version)
+ * 整合：核心邏輯 + 原版 CSS + 舊版過濾機制
+ * 修正：無資料時，嚴格執行 display: none 隱藏容器
  */
 
 (function() {
@@ -12,6 +10,7 @@
   // ============================================================
   const AGENT_API_URL = "https://script.google.com/macros/s/AKfycbyNJDANOuoqxNeLDl0ygGuWt73R8MrfobTaKHWmRc9yxrIF-Om40uYdR2aqSNwfedIt/exec";
 
+  // 等級對照表
   const LEVELS = {
     "社區人氣王": { icon: "fa-fire", title: "【社區人氣王】", mark: "HOT" },
     "社區專家": { icon: "fa-trophy", title: "【社區專家】", mark: "PRO+" },
@@ -19,7 +18,7 @@
   };
 
   // ==============================================
-  // 1. 自動注入樣式
+  // 1. 自動注入樣式 (包含字體與您原本的 CSS)
   // ==============================================
   function injectStyles() {
     // 1.1 FontAwesome
@@ -38,7 +37,7 @@
       document.head.appendChild(fontLink);
     }
 
-    // 1.3 注入 CSS (完全是您原本的代碼)
+    // 1.3 注入 CSS (完全是您原本提供的 CSS，無任何修改)
     const style = document.createElement('style');
     style.innerHTML = `
         /* 金牌業務卡片的CSS */
@@ -46,7 +45,7 @@
         /* 隱藏狀態 - 完全隱藏，不佔據空間 */
         .expert-card-hidden {
             opacity: 0 !important;
-            visibility: hidden !important;
+            /* visibility: hidden !important;*/
             transform: scale(0.8) !important;
             transition: none !important;
             pointer-events: none !important;
@@ -64,6 +63,8 @@
         /* 金牌經紀人容器 */
         .expert-card-wrapper {
             position: relative;
+            /* 外框效果由padding控制 */
+            /* padding: 3px;    */
             border-radius: 8px;
             overflow: hidden;
             width: 100%;
@@ -83,18 +84,28 @@
             right: -3px;
             bottom: -3px;
             border-radius: inherit;
+            /* 與外層一致的圓角 */
             background: linear-gradient(130deg, #fffaea, #eccb7d, #fff2d4, #f4c978, #ffedb1, #e6c079, #e7c57c);
             background-size: 400% 400%;
             animation: borderFlow 10s linear infinite;
             z-index: -2;
             box-shadow: 0 0 16px rgba(4, 255, 0, 0.715);
             pointer-events: none;
+            /* 不擋內部互動 */
         }
 
         @keyframes borderFlow {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+            0% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
+
+            100% {
+                background-position: 0% 50%;
+            }
         }
 
         .expert-card {
@@ -106,9 +117,16 @@
             flex-wrap: wrap;
         }
 
-        .expert-platinum {}
 
-        .expert-badge { display: none; }
+        /* 卡片金色漸層底內層-固定不動 跟陰影 */
+        .expert-platinum {
+            /* background: linear-gradient(120deg, rgb(255, 227, 126) 0%, #ffe68d 5%, #fff8d2 15%, #fffbec 20%, #ffe68d 55%, #fff7e0 75%, #fcd36c 100%); */
+            /* box-shadow: 0 0 2px #996a1a; */
+        }
+
+        .expert-badge {
+            display: none;
+        }
 
         .expert-card .expert-badge {
             background: radial-gradient(circle, #f5d770, #d1a106);
@@ -120,8 +138,13 @@
         }
 
         @keyframes rotateBadge {
-            0% { transform: rotateY(0deg); }
-            100% { transform: rotateY(360deg); }
+            0% {
+                transform: rotateY(0deg);
+            }
+
+            100% {
+                transform: rotateY(360deg);
+            }
         }
 
         .expert-profile {
@@ -134,9 +157,12 @@
             box-shadow: 0 2px 8px rgba(0, 0, 0, .1);
             display: block;
             aspect-ratio: 1/1;
+            /* 穩定佈局比例 */
         }
 
-        .expert-info { flex: 1; }
+        .expert-info {
+            flex: 1;
+        }
 
         .expert-title {
             font-size: 1.1rem;
@@ -144,7 +170,9 @@
             margin-bottom: 6px;
         }
 
-        .expert-info .expert-title { color: #9f5f00; }
+        .expert-info .expert-title {
+            color: #9f5f00;
+        }
 
         .expert-name-row {
             display: flex;
@@ -165,8 +193,13 @@
             white-space: nowrap;
         }
 
-        .expert-contact-phone { background: linear-gradient(to right, #a45500, #ff9e36); }
-        .expert-contact-line { background: linear-gradient(to right, #00a816, #67ca04); }
+        .expert-contact-phone {
+            background: linear-gradient(to right, #a45500, #ff9e36);
+        }
+
+        .expert-contact-line {
+            background: linear-gradient(to right, #00a816, #67ca04);
+        }
 
         .expert-contact {
             display: flex;
@@ -206,12 +239,21 @@
             box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 6px rgba(164, 85, 0, .35);
         }
 
-        .expert-contact a i.fa-phone-alt { font-size: 1.3rem; }
-        .expert-contact a i.fa-line { font-size: 1.5rem; }
+        .expert-contact a i.fa-phone-alt {
+            font-size: 1.3rem;
+        }
 
-        .expert-name-row .expert-contact a { color: #fff; }
+        .expert-contact a i.fa-line {
+            font-size: 1.5rem;
+        }
+
+
+        .expert-name-row .expert-contact a {
+            color: #fff;
+        }
 
         .expert-footer {
+            /* 證號經紀人隱藏 */
             display: none;
             position: relative;
             z-index: 3;
@@ -233,16 +275,28 @@
             pointer-events: none;
             z-index: 2;
             text-shadow: 0 1px 1px rgba(255, 255, 255, .4);
+            /* 微提可讀性 */
         }
 
         @keyframes fadeSlideIn {
-            0% { transform: translate(0, 20px); opacity: 0; }
-            100% { transform: translate(0, 0); opacity: .9; }
+            0% {
+                transform: translate(0, 20px);
+                opacity: 0;
+            }
+
+            100% {
+                transform: translate(0, 0);
+                opacity: .9;
+            }
         }
 
-        .expert-contact a span { display: none; }
+        .expert-contact a span {
+            display: none;
+        }
 
-        .expert-title i { animation: rotateBadge 3s linear infinite; }
+        .expert-title i {
+            animation: rotateBadge 3s linear infinite;
+        }
 
         .expert-opacity-0 {
             opacity: 0;
@@ -251,44 +305,113 @@
             transition: opacity .2s ease;
         }
 
-        /* RWD */
+        /* Small-plus 微調 */
         @media (min-width:414px) {
-            .expert-level-mark { font-size: 1.6rem; right: 10px; top: 6px; }
+            .expert-level-mark {
+                font-size: 1.6rem;
+                right: 10px;
+                top: 6px;
+            }
         }
 
+        /* ------電腦版調整------- */
         @media screen and (min-width:992px) {
-            .expert-card-wrapper { border-radius: 15px; }
-            .expert-card { border-radius: 15px; padding: 15px 28px; }
-            .expert-title { font-size: 1.7rem; }
-            .expert-title i { animation: none; }
-            .expert-name-row { gap: 30px; }
-            .expert-contact a {
-                width: auto; height: auto; min-height: 44px;
-                font-size: 1.4rem; padding: 8px 16px; gap: 8px;
-                border-radius: 10px; letter-spacing: 1.1px;
+            .expert-card-wrapper {
+                /* padding: 6px; */
+                border-radius: 15px;
             }
-            .expert-contact a span { display: inline; }
+
+            .expert-card-wrapper::before {
+                /* box-shadow: 0 0 16px rgba(106, 70, 19, .715); */
+            }
+
+            .expert-card {
+                border-radius: 15px;
+                padding: 15px 28px;
+            }
+
+            .expert-title {
+                font-size: 1.7rem;
+            }
+
+            .expert-title i {
+                animation: none;
+            }
+
+            /* 確實關閉桌機旋轉 */
+
+            .expert-platinum {
+                /* box-shadow: 0 0 3px #996a1a; */
+            }
+
+            .expert-name-row {
+                gap: 30px;
+            }
+
+            .expert-contact a {
+                width: auto;
+                height: auto;
+                min-height: 44px;
+                /* 桌機/平板更舒適的點擊區 */
+                font-size: 1.4rem;
+                padding: 8px 16px;
+                gap: 8px;
+                border-radius: 10px;
+                letter-spacing: 1.1px;
+            }
+
+            .expert-contact a span {
+                display: inline;
+            }
+
             .expert-badge {
-                width: 60px; height: 60px; border-radius: 50%;
-                display: flex; align-items: center; justify-content: center;
-                margin-right: 25px; flex-shrink: 0;
+                width: 60px;
+                height: 60px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-right: 25px;
+                flex-shrink: 0;
                 box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
                 animation: rotateBadge 3s linear infinite;
             }
+
             .expert-profile {
-                width: 120px !important; height: 120px !important;
-                border-radius: 12px; border: 4px solid #fff;
+                width: 120px !important;
+                height: 120px !important;
+                border-radius: 12px;
+                border: 4px solid #fff;
                 margin-right: 30px !important;
                 box-shadow: 0 2px 5px #dcad6ccc;
             }
-            .expert-name { font-size: 2.3rem; max-width: 40ch; }
-            .expert-level-mark { right: -20px; top: 34px; font-size: 6.5rem; }
-            .expert-footer { font-size: .85rem; }
+
+            .expert-name {
+                font-size: 2.3rem;
+                max-width: 40ch;
+                /* 避免超長姓名撐版 */
+            }
+
+            .expert-level-mark {
+                right: -20px;
+                top: 34px;
+                font-size: 6.5rem;
+            }
+
+            .expert-footer {
+                font-size: .85rem;
+            }
         }
 
+        /* 無動畫偏好：尊重系統設定 */
         @media (prefers-reduced-motion: reduce) {
-            .expert-title i, .expert-badge, .expert-card-wrapper[data-animate], .expert-level-mark {
-                animation: none !important; transition: none !important;
+
+            .expert-title i,
+            .expert-badge,
+            .expert-card-wrapper[data-animate],
+            .expert-level-mark {
+                animation: none !important;
+                transition: none !important;
             }
         }
     `;
@@ -337,49 +460,60 @@
   }
 
   // ==============================================
-  // 3. 核心邏輯
+  // 3. 核心邏輯 (整合了舊版呼叫與新版渲染)
   // ==============================================
   async function initExpertSystem() {
-    // 鎖定目標容器
+    // 1. 鎖定頁面上的經紀人卡片容器 (ID: expert-container)
     const container = document.getElementById('expert-container');
-    if (!container) return; 
+    
+    // 如果這頁沒有該容器，就不執行任何動作
+    if (!container) return;
 
+    // 2. 注入樣式 (CSS + Fonts)
     injectStyles();
 
     try {
+      // 3. 抓取所有經紀人資料
       const res = await fetch(AGENT_API_URL);
       const allExperts = await res.json();
       
       const caseName = container.dataset.caseName;
       
-      renderExpert(container, caseName, allExperts);
+      // 4. 過濾資料：找出 case_name 符合 且 在時間範圍內的經紀人
+      const matches = allExperts.filter(ex => 
+        ex.case_name === caseName && 
+        isInTimeRange(ex.start, ex.end)
+      );
+
+      // ★★★ 關鍵修復：如果沒有符合的經紀人，強制隱藏容器 ★★★
+      // 這裡使用了 !important 確保覆蓋任何潛在的顯示設定
+      if (matches.length === 0) {
+        container.style.setProperty('display', 'none', 'important');
+        return; // 程式結束，不會執行渲染
+      }
+
+      // --- 確定有資料，準備渲染 ---
+      
+      // 5. 隨機輪播邏輯 (參考舊版程式)
+      const expert = matches[Math.floor(Math.random() * matches.length)];
+      
+      // 6. 執行渲染
+      renderExpertCard(container, expert);
+      
+      // 7. 啟動動畫
       initObserver();
 
     } catch (err) {
       console.error('Expert Widget Error:', err);
-      // ★★★ 網路錯誤時：強制隱藏 ★★★
-      if(container) container.style.display = 'none';
+      // ★★★ 防呆：如果連線失敗或發生錯誤，強制隱藏容器 ★★★
+      if(container) container.style.setProperty('display', 'none', 'important');
     }
   }
 
-  function renderExpert(container, caseName, allExperts) {
-    // 過濾資料
-    const matches = allExperts.filter(ex => 
-      ex.case_name === caseName && 
-      isInTimeRange(ex.start, ex.end)
-    );
+  function renderExpertCard(container, expert) {
+    // 確保容器是顯示的 (萬一之前被隱藏)
+    container.style.display = '';
 
-    // ★★★ 無資料時：強制隱藏 (回復到原始邏輯) ★★★
-    if (matches.length === 0) {
-      container.style.display = 'none';
-      return;
-    }
-
-    // --- 有資料，確保顯示 ---
-    container.style.display = ''; // 清除 display:none 以防萬一
-
-    // 隨機取一筆
-    const expert = matches[Math.floor(Math.random() * matches.length)];
     const lvl = LEVELS[expert.level] || LEVELS["社區專家"];
     const imageSrc = escapeHtml(expert.image);
     const telHref = expert.phone ? `tel:${expert.phone}` : '';
@@ -391,7 +525,6 @@
       preload.src = imageSrc;
     }
 
-    // 產生 HTML
     const html = `
       <div class="expert-card-wrapper expert-platinum expert-card-hidden" data-animate="flipInY">
         <div class="expert-card expert-platinum">
