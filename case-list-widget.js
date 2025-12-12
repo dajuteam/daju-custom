@@ -179,12 +179,12 @@
         color: #eb6110;
         font-size: 1em;
         cursor: pointer;
-        border: 1px dashed #f49d00;
+        border: 1px dashed #fedcba;
         transition: all 0.2s;
         user-select: none; /* 防止連點選取文字 */
       }
       .case-list-more-btn:hover {
-        background-color: #fff;
+        background-color: #fff6ee;
         color: #eb6100;
         border-color: #eb6100;
       }
