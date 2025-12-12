@@ -1,18 +1,12 @@
 /**
- * 金牌經紀人 Widget (Ultimate Performance Version)
- * 功能：
- * 1. 自動注入 CSS (保留原版樣式與流動邊框)
- * 2. 圖片極致優化：loading="eager" + fetchpriority="high" + JS Preload
- * 3. 結合網站原有的 Animate.css 觸發 flipInY
+ * 金牌經紀人 Widget (Fix: 金色背景還原版)
+ * 修正：移除內層白底，讓金色流動背景完整顯示
  */
 
 (function() {
-  // ============================================================
-  // ⚡ 設定區：請務必將此處換成您部署後的 GAS Web App URL
-  // ============================================================
+  // ⚡ 設定：請務必將此處換成您部署後的 GAS Web App URL
   const AGENT_API_URL = "https://script.google.com/macros/s/AKfycbyNJDANOuoqxNeLDl0ygGuWt73R8MrfobTaKHWmRc9yxrIF-Om40uYdR2aqSNwfedIt/exec";
 
-  // 等級對照表
   const LEVELS = {
     "社區人氣王": { icon: "fa-fire", title: "【社區人氣王】", mark: "HOT" },
     "社區專家": { icon: "fa-trophy", title: "【社區專家】", mark: "PRO+" },
@@ -20,7 +14,7 @@
   };
 
   // ==============================================
-  // 1. 自動注入樣式 (保留您的原版 CSS)
+  // 1. 自動注入樣式
   // ==============================================
   function injectStyles() {
     if (!document.querySelector('link[href*="fontawesome"]')) {
@@ -54,27 +48,30 @@
           letter-spacing: 0;
           margin: 20px 0;
           isolation: isolate;
+          
+          /* ★ 修正 1: 依照您的需求，沒有邊框所以設為 0 */
+          padding: 0; 
       }
 
+      /* 金色流動背景 (動畫層) */
       .expert-card-wrapper::before {
           content: "";
           position: absolute;
-          top: -3px; left: -3px; right: -3px; bottom: -3px;
-          border-radius: inherit;
+          /* 確保覆蓋整個區域 */
+          top: -50%; left: -50%; right: -50%; bottom: -50%; 
           background: linear-gradient(130deg, #fffaea, #eccb7d, #fff2d4, #f4c978, #ffedb1, #e6c079, #e7c57c);
-          background-size: 400% 400%;
-          animation: borderFlow 10s linear infinite;
+          background-size: 200% 200%;
+          animation: borderFlow 5s linear infinite; /* 動畫 */
           z-index: -2;
-          box-shadow: 0 0 16px rgba(4, 255, 0, 0.715);
-          pointer-events: none;
       }
 
       @keyframes borderFlow {
-          0% { background-position: 0% 50%; }
+          0% { background-position: 0% 50%; transform: rotate(0deg); }
           50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
+          100% { background-position: 0% 50%; transform: rotate(360deg); }
       }
 
+      /* 內層卡片內容 */
       .expert-card {
           border-radius: 8px;
           padding: 10px 22px;
@@ -82,7 +79,9 @@
           display: flex;
           align-items: center;
           flex-wrap: wrap;
-          background: #fff;
+          
+          /* ★ 修正 2: 移除白色背景，改成透明，讓金色動畫透出來 */
+          background: transparent; 
       }
 
       .expert-badge { display: none; }
@@ -108,7 +107,7 @@
 
       .expert-info { flex: 1; }
       .expert-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 6px; }
-      .expert-info .expert-title { color: #9f5f00; }
+      .expert-info .expert-title { color: #9f5f00; } /* 深金色字體，在淺金背景上清楚 */
 
       .expert-name-row {
           display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 10px; position: relative; z-index: 10;
@@ -129,19 +128,21 @@
           border-radius: 50%; padding: 0; font-size: 1.4rem; line-height: 1;
           text-decoration: none; transition: transform .2s ease, filter .2s ease;
           outline: none; color: #fff;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.1); /* 按鈕加點陰影，避免融入背景 */
       }
       .expert-contact a:hover { transform: translateY(-1px); filter: brightness(1.05); }
       .expert-contact a i.fa-phone-alt { font-size: 1.3rem; }
       .expert-contact a i.fa-line { font-size: 1.5rem; }
 
-      .expert-footer { display: none; position: relative; z-index: 3; font-size: .5rem; color: #af885c; }
+      .expert-footer { display: none; position: relative; z-index: 3; font-size: .5rem; color: #8a6d3b; } /* 加深頁尾顏色 */
 
       .expert-level-mark {
           position: absolute; right: 18px; top: 10px;
           font-family: "Shrikhand", serif; font-style: italic; font-size: 1.1rem;
-          color: rgba(194, 145, 67, 0.5); opacity: 0;
+          color: rgba(160, 116, 45, 0.4); /* 加深浮水印顏色 */
+          opacity: 0;
           animation: fadeSlideIn .8s ease-out forwards; animation-delay: 1s;
-          pointer-events: none; z-index: 2; text-shadow: 0 1px 1px rgba(255, 255, 255, .4);
+          pointer-events: none; z-index: 2; 
       }
 
       @keyframes fadeSlideIn {
@@ -157,7 +158,7 @@
       }
 
       @media screen and (min-width:992px) {
-          .expert-card-wrapper { border-radius: 15px; }
+          .expert-card-wrapper { border-radius: 15px; padding: 0; /* 電腦版也維持 0 */ }
           .expert-card { border-radius: 15px; padding: 15px 28px; }
           .expert-title { font-size: 1.7rem; }
           .expert-title i { animation: none; }
@@ -246,13 +247,12 @@
       const allExperts = await res.json();
 
       targets.forEach(container => {
-        if(container.id === 'case-list') return; // 避開物件列表 Widget
+        if(container.id === 'case-list') return; 
         
         const caseName = container.dataset.caseName;
         renderExpert(container, caseName, allExperts);
       });
 
-      // 啟動動畫觀察器
       initObserver();
 
     } catch (err) {
@@ -277,14 +277,11 @@
     const telHref = expert.phone ? `tel:${expert.phone}` : '';
     const lineHref = sanitizeHref(expert.line, true);
 
-    // ★ 優化 1: JS 預先載入圖片 (Memory Preload)
-    // 這能確保 DOM 插入時，圖片已經在快取中
     if (imageSrc) {
       const preload = new Image();
       preload.src = imageSrc;
     }
 
-    // ★ 優化 2: HTML 屬性 (eager, fetchpriority)
     const html = `
       <div class="expert-card-wrapper expert-platinum expert-card-hidden" data-animate="flipInY">
         <div class="expert-card">
@@ -332,9 +329,7 @@
       entries.forEach(entry => {
         if (entry.isIntersecting) {
           const el = entry.target;
-          // 移除隱藏 class
           el.classList.remove('expert-card-hidden');
-          // 加入 Animate.css class (同時支援新舊版寫法以防萬一)
           el.classList.add('animate__animated', 'animate__flipInY', 'animated', 'flipInY');
           observer.unobserve(el);
         }
@@ -346,7 +341,6 @@
     }, 100);
   }
 
-  // 啟動
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initExpertSystem);
   } else {
