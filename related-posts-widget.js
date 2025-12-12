@@ -27,7 +27,7 @@
       ul.rel-list {
         list-style: none; /* 移除預設圓點 */
         padding: 0;
-        margin: 15px 0;
+        margin: 15px 0 !important;
         border-top: 2px solid #eee; /* 上方分隔線 */
         border-bottom: 2px solid #eee; /* 下方分隔線 */
         background: #fff;
