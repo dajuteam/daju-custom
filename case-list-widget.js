@@ -174,12 +174,12 @@
         width: 100%;
         text-align: center;
         padding: 12px 0;
-        margin-top: 10px;
+        margin-top: 15px;
         background-color: #fff;
         color: #eb6110;
         font-size: 1em;
         cursor: pointer;
-        border: 1px dashed #ddd;
+        border: 1px dashed #f49d00;
         transition: all 0.2s;
         user-select: none; /* 防止連點選取文字 */
       }
