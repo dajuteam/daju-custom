@@ -175,7 +175,7 @@
         text-align: center;
         padding: 12px 0;
         margin-top: 10px;
-        background-color: #fff6e3;
+        background-color: #fff;
         color: #eb6110;
         font-size: 1em;
         cursor: pointer;
