@@ -1,7 +1,10 @@
 /**
- * 金牌經紀人 Widget (Final Integrated Version)
- * 整合：核心邏輯 + 原版 CSS + 舊版過濾機制
- * 修正：無資料時，嚴格執行 display: none 隱藏容器
+ * 金牌經紀人 Widget (Default Hidden Strategy)
+ * 修正邏輯：
+ * 1. 程式啟動瞬間 -> 強制隱藏容器 (解決載入時的空白/閃爍問題)
+ * 2. 獲取資料
+ * 3. 只有確認「有資料」時 -> 解除隱藏並渲染
+ * 4. CSS 保持 100% 原版無修改
  */
 
 (function() {
@@ -10,7 +13,6 @@
   // ============================================================
   const AGENT_API_URL = "https://script.google.com/macros/s/AKfycbyNJDANOuoqxNeLDl0ygGuWt73R8MrfobTaKHWmRc9yxrIF-Om40uYdR2aqSNwfedIt/exec";
 
-  // 等級對照表
   const LEVELS = {
     "社區人氣王": { icon: "fa-fire", title: "【社區人氣王】", mark: "HOT" },
     "社區專家": { icon: "fa-trophy", title: "【社區專家】", mark: "PRO+" },
@@ -18,7 +20,7 @@
   };
 
   // ==============================================
-  // 1. 自動注入樣式 (包含字體與您原本的 CSS)
+  // 1. 自動注入樣式
   // ==============================================
   function injectStyles() {
     // 1.1 FontAwesome
@@ -460,66 +462,54 @@
   }
 
   // ==============================================
-  // 3. 核心邏輯 (整合了舊版呼叫與新版渲染)
+  // 3. 核心邏輯
   // ==============================================
   async function initExpertSystem() {
-    // 1. 鎖定頁面上的經紀人卡片容器 (ID: expert-container)
     const container = document.getElementById('expert-container');
-    
-    // 如果這頁沒有該容器，就不執行任何動作
-    if (!container) return;
+    if (!container) return; 
 
-    // 2. 注入樣式 (CSS + Fonts)
+    // ★★★ 核心修正：在任何事情發生前，先強制隱藏容器 ★★★
+    // 這樣在等待 Google 回傳資料的這幾秒，網頁上什麼都不會顯示
+    container.style.setProperty('display', 'none', 'important');
+
     injectStyles();
 
     try {
-      // 3. 抓取所有經紀人資料
       const res = await fetch(AGENT_API_URL);
       const allExperts = await res.json();
       
-      const caseName = container.dataset.caseName;
+      // 去除前後空白，避免對應不到
+      const caseName = (container.dataset.caseName || '').trim();
       
-      // 4. 過濾資料：找出 case_name 符合 且 在時間範圍內的經紀人
       const matches = allExperts.filter(ex => 
         ex.case_name === caseName && 
         isInTimeRange(ex.start, ex.end)
       );
 
-      // ★★★ 關鍵修復：如果沒有符合的經紀人，強制隱藏容器 ★★★
-      // 這裡使用了 !important 確保覆蓋任何潛在的顯示設定
+      // ★★★ 如果沒資料：直接結束，容器保持隱藏 ★★★
       if (matches.length === 0) {
-        container.style.setProperty('display', 'none', 'important');
-        return; // 程式結束，不會執行渲染
+        return; 
       }
 
-      // --- 確定有資料，準備渲染 ---
-      
-      // 5. 隨機輪播邏輯 (參考舊版程式)
+      // --- 有資料了，才隨機取一位並渲染 ---
       const expert = matches[Math.floor(Math.random() * matches.length)];
-      
-      // 6. 執行渲染
       renderExpertCard(container, expert);
       
-      // 7. 啟動動畫
+      // 動畫初始化
       initObserver();
 
     } catch (err) {
       console.error('Expert Widget Error:', err);
-      // ★★★ 防呆：如果連線失敗或發生錯誤，強制隱藏容器 ★★★
-      if(container) container.style.setProperty('display', 'none', 'important');
+      // 發生錯誤時，保持隱藏狀態 (因為第一行已經隱藏了，這裡不需要做額外動作)
     }
   }
 
   function renderExpertCard(container, expert) {
-    // 確保容器是顯示的 (萬一之前被隱藏)
-    container.style.display = '';
-
     const lvl = LEVELS[expert.level] || LEVELS["社區專家"];
     const imageSrc = escapeHtml(expert.image);
     const telHref = expert.phone ? `tel:${expert.phone}` : '';
     const lineHref = sanitizeHref(expert.line, true);
 
-    // 圖片預載
     if (imageSrc) {
       const preload = new Image();
       preload.src = imageSrc;
@@ -560,6 +550,9 @@
     `;
 
     container.innerHTML = html;
+
+    // ★★★ 渲染完成後，最後一步才把容器顯示出來 ★★★
+    container.style.display = ''; 
   }
 
   // ==============================================
