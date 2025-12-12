@@ -1,14 +1,14 @@
 /**
- * 金牌經紀人 Widget (Original CSS Version)
+ * 金牌經紀人 Widget (Final Perfect Version)
  * 功能：
- * 1. 注入 100% 原版 CSS (包含 padding: 3px / background: linear-gradient / expert-platinum 等)
- * 2. 邏輯封裝 (抓取、過濾、隨機)
- * 3. 圖片極致優化 (Preload + eager)
+ * 1. 鎖定 id="expert-container"
+ * 2. 完整保留原版 CSS 與 Google Fonts
+ * 3. 沒資料時自動隱藏
  */
 
 (function() {
   // ============================================================
-  // ⚡ 設定區：請務必將此處換成您部署後的 GAS Web App URL
+  // ⚡ 設定區：GAS Web App URL
   // ============================================================
   const AGENT_API_URL = "https://script.google.com/macros/s/AKfycbyNJDANOuoqxNeLDl0ygGuWt73R8MrfobTaKHWmRc9yxrIF-Om40uYdR2aqSNwfedIt/exec";
 
@@ -20,9 +20,10 @@
   };
 
   // ==============================================
-  // 1. 自動注入樣式 (完全使用您提供的 CSS)
+  // 1. 自動注入樣式
   // ==============================================
   function injectStyles() {
+    // 1.1 引入 FontAwesome
     if (!document.querySelector('link[href*="fontawesome"]')) {
       const faLink = document.createElement('link');
       faLink.rel = 'stylesheet';
@@ -30,7 +31,7 @@
       document.head.appendChild(faLink);
     }
 
-   // 1.2 ★★★ 新增：引入 Google Fonts (Shrikhand) ★★★
+    // 1.2 ★★★ 確認保留：引入 Google Fonts (Shrikhand) ★★★
     if (!document.querySelector('link[href*="Shrikhand"]')) {
       const fontLink = document.createElement('link');
       fontLink.rel = 'stylesheet';
@@ -38,16 +39,21 @@
       document.head.appendChild(fontLink);
     }
 
-    // 1.3 注入 CSS 樣式
+    // 1.3 注入 CSS (完全保留您原本的樣式)
     const style = document.createElement('style');
-    // ↓↓↓↓↓ 這裡是您提供的完整 CSS，未做任何修改 ↓↓↓↓↓
     style.innerHTML = `
+        /* --- 系統功能性樣式 (用於強制隱藏) --- */
+        .expert-hidden-force {
+            display: none !important;
+        }
+
+        /* --- 以下為您原本的 CSS --- */
+
         /* 金牌業務卡片的CSS */
 
         /* 隱藏狀態 - 完全隱藏，不佔據空間 */
         .expert-card-hidden {
             opacity: 0 !important;
-           /* visibility: hidden !important;*/
             transform: scale(0.8) !important;
             transition: none !important;
             pointer-events: none !important;
@@ -462,43 +468,49 @@
   }
 
   // ==============================================
-  // 3. 核心邏輯
+  // 3. 核心邏輯 (修正版)
   // ==============================================
   async function initExpertSystem() {
-    const targets = document.querySelectorAll('[data-case-name]');
-    if (targets.length === 0) return;
+    // 1. 鎖定 id="expert-container"
+    const container = document.getElementById('expert-container');
+    
+    // 如果這頁面沒有該容器，就不執行任何動作
+    if (!container) return;
 
     injectStyles();
 
     try {
       const res = await fetch(AGENT_API_URL);
       const allExperts = await res.json();
-
-      targets.forEach(container => {
-        if(container.id === 'case-list') return; 
-        
-        const caseName = container.dataset.caseName;
-        renderExpert(container, caseName, allExperts);
-      });
+      
+      const caseName = container.dataset.caseName;
+      
+      // 呼叫渲染函式
+      renderExpert(container, caseName, allExperts);
 
       initObserver();
 
     } catch (err) {
       console.error('Expert Widget Error:', err);
+      // ★★★ 防呆：如果連線失敗，強制隱藏容器，避免留下空白 ★★★
+      if(container) container.classList.add('expert-hidden-force');
     }
   }
 
   function renderExpert(container, caseName, allExperts) {
+    // 過濾資料
     const matches = allExperts.filter(ex => 
       ex.case_name === caseName && 
       isInTimeRange(ex.start, ex.end)
     );
 
+    // ★★★ 關鍵：如果沒有符合的經紀人，強制隱藏容器 ★★★
     if (matches.length === 0) {
-      container.style.display = 'none';
+      container.style.setProperty('display', 'none', 'important');
       return;
     }
 
+    // 有資料 -> 隨機取一筆
     const expert = matches[Math.floor(Math.random() * matches.length)];
     const lvl = LEVELS[expert.level] || LEVELS["社區專家"];
     const imageSrc = escapeHtml(expert.image);
@@ -510,7 +522,6 @@
       preload.src = imageSrc;
     }
 
-    // HTML 結構 (保留 expert-platinum class)
     const html = `
       <div class="expert-card-wrapper expert-platinum expert-card-hidden" data-animate="flipInY">
         <div class="expert-card expert-platinum">
