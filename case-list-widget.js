@@ -141,8 +141,7 @@
       }
 
       .case-list-title {
-        font-size: 16px;
-        color: #444;
+        font-size: 1.1rem;
         font-weight: 500;
         line-height: 1.5;
       }
