@@ -36,8 +36,6 @@
         background: #fff;
         padding: 0px;
         box-sizing: border-box;
-        border-radius: 8px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
       }
 
       /* 2. 標題區 */
