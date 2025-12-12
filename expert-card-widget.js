@@ -46,6 +46,7 @@
         /* 隱藏狀態 - 完全隱藏，不佔據空間 */
         .expert-card-hidden {
             opacity: 0 !important;
+            visibility: hidden !important;
             transform: scale(0.8) !important;
             transition: none !important;
             pointer-events: none !important;
