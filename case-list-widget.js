@@ -41,7 +41,7 @@
       /* 2. 標題區 */
       .case-list-header {
         color: #eb6100;
-        font-size: 22px;
+        font-size: 1.6rem;
         font-weight: bold;
         margin-bottom: 15px;
         padding-left: 5px;
@@ -282,7 +282,7 @@
     let html = `
       <div class="case-list-container">
         <div class="case-list-header">
-          <span>《 正在銷售的物件 》</span>
+          <span>《 最新上架物件 》</span>
           <span class="case-list-count">共 ${filteredItems.length} 筆</span>
         </div>
         <div class="case-list-ul">
