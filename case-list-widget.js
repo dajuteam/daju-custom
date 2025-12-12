@@ -32,9 +32,9 @@
       .case-list-container {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         width: 100%;
-        margin: 20px 0; /* 靠左對齊 */
+        margin: 30px 40px 0 0; 
         background: #fff;
-        padding: 15px;
+        padding: 0px;
         box-sizing: border-box;
         border-radius: 8px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.05);
@@ -177,9 +177,9 @@
         text-align: center;
         padding: 12px 0;
         margin-top: 10px;
-        background-color: #f9f9f9;
-        color: #666;
-        font-size: 15px;
+        background-color: #fff6e3;
+        color: #eb6110;
+        font-size: 1em;
         cursor: pointer;
         border: 1px dashed #ddd;
         transition: all 0.2s;
