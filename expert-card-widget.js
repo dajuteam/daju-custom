@@ -1,10 +1,9 @@
 /**
- * 金牌經紀人 Widget (All-in-One Final)
+ * 金牌經紀人 Widget (Original CSS Version)
  * 功能：
- * 1. 自動注入 CSS (含 FontAwesome + Google Fonts Shrikhand)
- * 2. 邏輯封裝 (抓取、過濾、隨機、時間判斷)
+ * 1. 注入 100% 原版 CSS (包含 padding: 3px / background: linear-gradient / expert-platinum 等)
+ * 2. 邏輯封裝 (抓取、過濾、隨機)
  * 3. 圖片極致優化 (Preload + eager)
- * 4. 金色流動背景 (透明卡片 + padding 0)
  */
 
 (function() {
@@ -21,10 +20,9 @@
   };
 
   // ==============================================
-  // 1. 自動注入資源 (CSS + Icons + Fonts)
+  // 1. 自動注入樣式 (完全使用您提供的 CSS)
   // ==============================================
   function injectStyles() {
-    // 1.1 引入 Font Awesome
     if (!document.querySelector('link[href*="fontawesome"]')) {
       const faLink = document.createElement('link');
       faLink.rel = 'stylesheet';
@@ -32,7 +30,7 @@
       document.head.appendChild(faLink);
     }
 
-    // 1.2 ★★★ 新增：引入 Google Fonts (Shrikhand) ★★★
+   // 1.2 ★★★ 新增：引入 Google Fonts (Shrikhand) ★★★
     if (!document.querySelector('link[href*="Shrikhand"]')) {
       const fontLink = document.createElement('link');
       fontLink.rel = 'stylesheet';
@@ -42,164 +40,382 @@
 
     // 1.3 注入 CSS 樣式
     const style = document.createElement('style');
+    // ↓↓↓↓↓ 這裡是您提供的完整 CSS，未做任何修改 ↓↓↓↓↓
     style.innerHTML = `
-      /* 隱藏狀態 */
-      .expert-card-hidden {
-          opacity: 0 !important;
-          visibility: hidden !important;
-          transform: scale(0.8) !important;
-          transition: none !important;
-          pointer-events: none !important;
-          will-change: transform, opacity;
-      }
+        /* 金牌業務卡片的CSS */
 
-      /* 金牌經紀人容器 */
-      .expert-card-wrapper {
-          position: relative;
-          border-radius: 8px;
-          overflow: hidden;
-          width: 100%;
-          max-width: 1000px;
-          z-index: 0;
-          line-height: 1.5;
-          letter-spacing: 0;
-          margin: 20px 0;
-          isolation: isolate;
-          padding: 0; /* 無邊框 */
-      }
+        /* 隱藏狀態 - 完全隱藏，不佔據空間 */
+        .expert-card-hidden {
+            opacity: 0 !important;
+            visibility: hidden !important;
+            transform: scale(0.8) !important;
+            transition: none !important;
+            pointer-events: none !important;
+            will-change: transform, opacity;
+        }
 
-      /* 金色流動背景 */
-      .expert-card-wrapper::before {
-          content: "";
-          position: absolute;
-          top: -50%; left: -50%; right: -50%; bottom: -50%;
-          background: linear-gradient(130deg, #fffaea, #eccb7d, #fff2d4, #f4c978, #ffedb1, #e6c079, #e7c57c);
-          background-size: 200% 200%;
-          animation: borderFlow 5s linear infinite;
-          z-index: -2;
-      }
+        .expert-card-fallback {
+            opacity: 1 !important;
+            visibility: visible !important;
+            transform: scale(1) translateY(0) !important;
+            transition: all .6s cubic-bezier(.4, 0, .2, 1) !important;
+            will-change: transform, opacity;
+        }
 
-      @keyframes borderFlow {
-          0% { background-position: 0% 50%; transform: rotate(0deg); }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; transform: rotate(360deg); }
-      }
+        /* 金牌經紀人容器 */
+        .expert-card-wrapper {
+            position: relative;
+            /* 外框效果由padding控制 */
+            /* padding: 3px;    */
+            border-radius: 8px;
+            overflow: hidden;
+            width: 100%;
+            max-width: 1000px;
+            z-index: 0;
+            line-height: 1.5;
+            letter-spacing: 0;
+            margin: 20px 0;
+            isolation: isolate;
+        }
 
-      /* 內層卡片 (透明背景以顯示金色) */
-      .expert-card {
-          border-radius: 8px;
-          padding: 10px 22px;
-          position: relative;
-          display: flex;
-          align-items: center;
-          flex-wrap: wrap;
-          background: transparent;
-      }
+        .expert-card-wrapper::before {
+            content: "";
+            position: absolute;
+            top: -3px;
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
+            border-radius: inherit;
+            /* 與外層一致的圓角 */
+            background: linear-gradient(130deg, #fffaea, #eccb7d, #fff2d4, #f4c978, #ffedb1, #e6c079, #e7c57c);
+            background-size: 400% 400%;
+            animation: borderFlow 10s linear infinite;
+            z-index: -2;
+            box-shadow: 0 0 16px rgba(4, 255, 0, 0.715);
+            pointer-events: none;
+            /* 不擋內部互動 */
+        }
 
-      .expert-badge { display: none; }
-      .expert-card .expert-badge { background: radial-gradient(circle, #f5d770, #d1a106); }
-      .expert-badge i { color: #fff; font-size: 1.8em; }
+        @keyframes borderFlow {
+            0% {
+                background-position: 0% 50%;
+            }
 
-      @keyframes rotateBadge {
-          0% { transform: rotateY(0deg); }
-          100% { transform: rotateY(360deg); }
-      }
+            50% {
+                background-position: 100% 50%;
+            }
 
-      .expert-profile {
-          width: 80px !important;
-          height: 80px !important;
-          border-radius: 12px;
-          border: 3px solid #fff;
-          object-fit: cover;
-          margin-right: 15px !important;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, .1);
-          display: block;
-          aspect-ratio: 1/1;
-      }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
 
-      .expert-info { flex: 1; }
-      .expert-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 6px; }
-      .expert-info .expert-title { color: #9f5f00; }
+        .expert-card {
+            border-radius: 8px;
+            padding: 10px 22px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+        }
 
-      .expert-name-row {
-          display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 10px; position: relative; z-index: 10;
-      }
 
-      .expert-name {
-          font-size: 1.7rem; font-weight: bold; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #333;
-      }
+        /* 卡片金色漸層底內層-固定不動 跟陰影 */
+        .expert-platinum {
+            /* background: linear-gradient(120deg, rgb(255, 227, 126) 0%, #ffe68d 5%, #fff8d2 15%, #fffbec 20%, #ffe68d 55%, #fff7e0 75%, #fcd36c 100%); */
+            /* box-shadow: 0 0 2px #996a1a; */
+        }
 
-      .expert-contact-phone { background: linear-gradient(to right, #a45500, #ff9e36); }
-      .expert-contact-line { background: linear-gradient(to right, #00a816, #67ca04); }
+        .expert-badge {
+            display: none;
+        }
 
-      .expert-contact { display: flex; gap: 15px; flex-wrap: wrap; }
+        .expert-card .expert-badge {
+            background: radial-gradient(circle, #f5d770, #d1a106);
+        }
 
-      .expert-contact a {
-          display: inline-flex; align-items: center; justify-content: center;
-          width: 40px; height: 40px; min-width: 40px; min-height: 40px;
-          border-radius: 50%; padding: 0; font-size: 1.4rem; line-height: 1;
-          text-decoration: none; transition: transform .2s ease, filter .2s ease, box-shadow .2s ease;
-          outline: none; color: #fff;
-          box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-      }
-      .expert-contact a:hover { transform: translateY(-1px); filter: brightness(1.05); }
-      .expert-contact a i.fa-phone-alt { font-size: 1.3rem; }
-      .expert-contact a i.fa-line { font-size: 1.5rem; }
+        .expert-badge i {
+            color: #fff;
+            font-size: 1.8em;
+        }
 
-      .expert-footer { display: none; position: relative; z-index: 3; font-size: .5rem; color: #8a6d3b; }
+        @keyframes rotateBadge {
+            0% {
+                transform: rotateY(0deg);
+            }
 
-      /* 右上角浮水印 (使用 Shrikhand 字體) */
-      .expert-level-mark {
-          position: absolute; right: 18px; top: 10px;
-          font-family: "Shrikhand", serif; font-style: italic; font-size: 1.1rem;
-          color: rgba(160, 116, 45, 0.4); opacity: 0;
-          animation: fadeSlideIn .8s ease-out forwards; animation-delay: 1s;
-          pointer-events: none; z-index: 2; 
-      }
+            100% {
+                transform: rotateY(360deg);
+            }
+        }
 
-      @keyframes fadeSlideIn {
-          0% { transform: translate(0, 20px); opacity: 0; }
-          100% { transform: translate(0, 0); opacity: .9; }
-      }
+        .expert-profile {
+            width: 80px !important;
+            height: 80px !important;
+            border-radius: 12px;
+            border: 3px solid #fff;
+            object-fit: cover;
+            margin-right: 15px !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .1);
+            display: block;
+            aspect-ratio: 1/1;
+            /* 穩定佈局比例 */
+        }
 
-      .expert-contact a span { display: none; }
-      .expert-title i { animation: rotateBadge 3s linear infinite; }
+        .expert-info {
+            flex: 1;
+        }
 
-      @media (min-width:414px) {
-          .expert-level-mark { font-size: 1.6rem; right: 10px; top: 6px; }
-      }
+        .expert-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
 
-      @media screen and (min-width:992px) {
-          .expert-card-wrapper { border-radius: 15px; padding: 0; }
-          .expert-card { border-radius: 15px; padding: 15px 28px; }
-          .expert-title { font-size: 1.7rem; }
-          .expert-title i { animation: none; }
-          .expert-name-row { gap: 30px; }
-          .expert-contact a {
-              width: auto; height: auto; min-height: 44px; font-size: 1.4rem;
-              padding: 8px 16px; gap: 8px; border-radius: 10px; letter-spacing: 1.1px;
-          }
-          .expert-contact a span { display: inline; }
-          .expert-badge {
-              width: 60px; height: 60px; border-radius: 50%; display: flex;
-              align-items: center; justify-content: center; margin-right: 25px;
-              flex-shrink: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
-              animation: rotateBadge 3s linear infinite;
-          }
-          .expert-profile {
-              width: 120px !important; height: 120px !important; border-radius: 12px;
-              border: 4px solid #fff; margin-right: 30px !important; box-shadow: 0 2px 5px #dcad6ccc;
-          }
-          .expert-name { font-size: 2.3rem; max-width: 40ch; }
-          .expert-level-mark { right: -20px; top: 34px; font-size: 6.5rem; }
-          .expert-footer { display: block; font-size: .85rem; }
-      }
+        .expert-info .expert-title {
+            color: #9f5f00;
+        }
 
-      @media (prefers-reduced-motion: reduce) {
-          .expert-title i, .expert-badge, .expert-card-wrapper[data-animate], .expert-level-mark {
-              animation: none !important; transition: none !important;
-          }
-      }
+        .expert-name-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .expert-name {
+            font-size: 1.7rem;
+            font-weight: bold;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .expert-contact-phone {
+            background: linear-gradient(to right, #a45500, #ff9e36);
+        }
+
+        .expert-contact-line {
+            background: linear-gradient(to right, #00a816, #67ca04);
+        }
+
+        .expert-contact {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .expert-contact a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+            min-height: 40px;
+            border-radius: 50%;
+            padding: 0;
+            font-size: 1.4rem;
+            line-height: 1;
+            text-decoration: none;
+            transition: transform .2s ease, filter .2s ease, box-shadow .2s ease;
+            outline: none;
+            color: #fff;
+        }
+
+        .expert-contact a:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.05);
+        }
+
+        .expert-contact a:active {
+            transform: translateY(0);
+            filter: brightness(.98);
+        }
+
+        .expert-contact a:focus-visible {
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 6px rgba(164, 85, 0, .35);
+        }
+
+        .expert-contact a i.fa-phone-alt {
+            font-size: 1.3rem;
+        }
+
+        .expert-contact a i.fa-line {
+            font-size: 1.5rem;
+        }
+
+
+        .expert-name-row .expert-contact a {
+            color: #fff;
+        }
+
+        .expert-footer {
+            /* 證號經紀人隱藏 */
+            display: none;
+            position: relative;
+            z-index: 3;
+            font-size: .5rem;
+            color: #af885c;
+        }
+
+        .expert-level-mark {
+            position: absolute;
+            right: 18px;
+            top: 10px;
+            font-family: "Shrikhand", serif;
+            font-style: italic;
+            font-size: 1.1rem;
+            color: rgba(194, 145, 67, 0.5);
+            opacity: 0;
+            animation: fadeSlideIn .8s ease-out forwards;
+            animation-delay: 1s;
+            pointer-events: none;
+            z-index: 2;
+            text-shadow: 0 1px 1px rgba(255, 255, 255, .4);
+            /* 微提可讀性 */
+        }
+
+        @keyframes fadeSlideIn {
+            0% {
+                transform: translate(0, 20px);
+                opacity: 0;
+            }
+
+            100% {
+                transform: translate(0, 0);
+                opacity: .9;
+            }
+        }
+
+        .expert-contact a span {
+            display: none;
+        }
+
+        .expert-title i {
+            animation: rotateBadge 3s linear infinite;
+        }
+
+        .expert-opacity-0 {
+            opacity: 0;
+            pointer-events: none;
+            visibility: hidden;
+            transition: opacity .2s ease;
+        }
+
+        /* Small-plus 微調 */
+        @media (min-width:414px) {
+            .expert-level-mark {
+                font-size: 1.6rem;
+                right: 10px;
+                top: 6px;
+            }
+        }
+
+        /* ------電腦版調整------- */
+        @media screen and (min-width:992px) {
+            .expert-card-wrapper {
+                /* padding: 6px; */
+                border-radius: 15px;
+            }
+
+            .expert-card-wrapper::before {
+                /* box-shadow: 0 0 16px rgba(106, 70, 19, .715); */
+            }
+
+            .expert-card {
+                border-radius: 15px;
+                padding: 15px 28px;
+            }
+
+            .expert-title {
+                font-size: 1.7rem;
+            }
+
+            .expert-title i {
+                animation: none;
+            }
+
+            /* 確實關閉桌機旋轉 */
+
+            .expert-platinum {
+                /* box-shadow: 0 0 3px #996a1a; */
+            }
+
+            .expert-name-row {
+                gap: 30px;
+            }
+
+            .expert-contact a {
+                width: auto;
+                height: auto;
+                min-height: 44px;
+                /* 桌機/平板更舒適的點擊區 */
+                font-size: 1.4rem;
+                padding: 8px 16px;
+                gap: 8px;
+                border-radius: 10px;
+                letter-spacing: 1.1px;
+            }
+
+            .expert-contact a span {
+                display: inline;
+            }
+
+            .expert-badge {
+                width: 60px;
+                height: 60px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-right: 25px;
+                flex-shrink: 0;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
+                animation: rotateBadge 3s linear infinite;
+            }
+
+            .expert-profile {
+                width: 120px !important;
+                height: 120px !important;
+                border-radius: 12px;
+                border: 4px solid #fff;
+                margin-right: 30px !important;
+                box-shadow: 0 2px 5px #dcad6ccc;
+            }
+
+            .expert-name {
+                font-size: 2.3rem;
+                max-width: 40ch;
+                /* 避免超長姓名撐版 */
+            }
+
+            .expert-level-mark {
+                right: -20px;
+                top: 34px;
+                font-size: 6.5rem;
+            }
+
+            .expert-footer {
+                font-size: .85rem;
+            }
+        }
+
+        /* 無動畫偏好：尊重系統設定 */
+        @media (prefers-reduced-motion: reduce) {
+
+            .expert-title i,
+            .expert-badge,
+            .expert-card-wrapper[data-animate],
+            .expert-level-mark {
+                animation: none !important;
+                transition: none !important;
+            }
+        }
     `;
     document.head.appendChild(style);
   }
@@ -294,9 +510,10 @@
       preload.src = imageSrc;
     }
 
+    // HTML 結構 (保留 expert-platinum class)
     const html = `
       <div class="expert-card-wrapper expert-platinum expert-card-hidden" data-animate="flipInY">
-        <div class="expert-card">
+        <div class="expert-card expert-platinum">
           <div class="expert-badge"><i class="fas ${lvl.icon}"></i></div>
           
           <img 
