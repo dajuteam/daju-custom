@@ -1,23 +1,29 @@
 /**
- * 房地產物件列表 Widget (V3.0 - Animation & Mobile UX)
- * 功能：
- * 1. 預設顯示 3 筆
- * 2. 展開/收合動畫效果
- * 3. 電腦版開新頁，手機版原頁開啟
+ * 金牌經紀人 Widget (Default Hidden Strategy)
+ * 修正邏輯：
+ * 1. 程式啟動瞬間 -> 強制隱藏容器 (解決載入時的空白/閃爍問題)
+ * 2. 獲取資料
+ * 3. 只有確認「有資料」時 -> 解除隱藏並渲染
+ * 4. CSS 保持 100% 原版無修改
  */
 
 (function() {
-  // ⚡ 設定：請務必將此處換成您部署後的 GAS Web App URL
-  const API_URL = "https://script.google.com/macros/s/AKfycby_JwXX718xhd51sR5ZNl8AS3CSg5Q0e7XnNf4ddEByjUVuCH-XfEfDyxWSdysHM9ZEWA/exec"; 
+  // ============================================================
+  // ⚡ 設定區
+  // ============================================================
+  const AGENT_API_URL = "https://script.google.com/macros/s/AKfycbyNJDANOuoqxNeLDl0ygGuWt73R8MrfobTaKHWmRc9yxrIF-Om40uYdR2aqSNwfedIt/exec";
 
-  // 設定顯示上限 (現在改為 3)
-  const MAX_VISIBLE_ITEMS = 3;
+  const LEVELS = {
+    "社區人氣王": { icon: "fa-fire", title: "【社區人氣王】", mark: "HOT" },
+    "社區專家": { icon: "fa-trophy", title: "【社區專家】", mark: "PRO+" },
+    "社區大師": { icon: "fa-crown", title: "【社區大師】", mark: "MASTER" }
+  };
 
   // ==============================================
-  // 1. 自動注入樣式 (CSS + Font Awesome)
+  // 1. 自動注入樣式
   // ==============================================
   function injectStyles() {
-    // 1.1 引入 Font Awesome
+    // 1.1 FontAwesome
     if (!document.querySelector('link[href*="fontawesome"]')) {
       const faLink = document.createElement('link');
       faLink.rel = 'stylesheet';
@@ -25,343 +31,556 @@
       document.head.appendChild(faLink);
     }
 
-    // 1.2 注入客製化 CSS (含動畫設定)
+    // 1.2 Google Fonts (Shrikhand)
+    if (!document.querySelector('link[href*="Shrikhand"]')) {
+      const fontLink = document.createElement('link');
+      fontLink.rel = 'stylesheet';
+      fontLink.href = 'https://fonts.googleapis.com/css2?family=Shrikhand&display=swap';
+      document.head.appendChild(fontLink);
+    }
+
+    // 1.3 注入 CSS (完全是您原本提供的 CSS，無任何修改)
     const style = document.createElement('style');
     style.innerHTML = `
-      /* 1. 外層容器 */
-      .case-list-container {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        width: 100%;
-        margin: 30px 40px 0 0; 
-        background: #fff;
-        padding: 0px;
-        box-sizing: border-box;
-      }
+        /* 金牌業務卡片的CSS */
 
-      /* 2. 標題區 */
-      .case-list-header {
-        color: #eb6100;
-        font-size: 1.6rem;
-        font-weight: bold;
-        margin-bottom: 15px;
-        padding-left: 5px;
-        letter-spacing: 1px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-
-      .case-list-count {
-        font-size: 14px;
-        font-weight: normal;
-        background: #eb6100;
-        color: #fff;
-        padding: 2px 8px;
-        border-radius: 12px;
-      }
-
-      /* 3. 列表容器 */
-      .case-list-ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        border-top: 2px solid #eb6100;
-      }
-
-      /* 4. 單個物件項目 */
-      .case-list-item {
-        display: flex;
-        flex-direction: column; /* 手機優先：垂直 */
-        align-items: flex-start;
-        padding: 15px 10px;
-        border-bottom: 1px solid #ffe6cc;
-        transition: background-color 0.2s;
-      }
-
-      /* 移除最後一個項目的底線 (針對 visible 和 hidden 最後一個都處理) */
-      .case-list-ul > .case-list-item:last-child,
-      .case-list-overflow > .case-list-item:last-child {
-        border-bottom: none;
-      }
-
-      .case-list-item:hover {
-        background-color: #fff9f2;
-      }
-
-      /* --- 動畫收合區塊 (核心 CSS) --- */
-      .case-list-overflow {
-        max-height: 0;
-        overflow: hidden;
-        opacity: 0;
-        /* 使用 ease-in-out 讓展開收起更滑順 */
-        transition: max-height 0.5s ease-in-out, opacity 0.4s ease-in-out;
-      }
-
-      /* 展開狀態 */
-      .case-list-overflow.is-expanded {
-        max-height: 2000px; /* 設定一個足夠大的高度 */
-        opacity: 1;
-      }
-
-      /* --- 連結與內容 --- */
-      .case-list-link {
-        text-decoration: none;
-        display: flex;
-        align-items: flex-start;
-        width: 100%;
-        margin-bottom: 8px;
-        padding-right: 0;
-      }
-
-      .case-list-link::after {
-        content: "\\f35d";
-        font-family: "Font Awesome 5 Free";    
-        font-weight: 900; 
-        font-size: 0.65em; 
-        position: static; 
-        color: #eb6100; 
-        opacity: 0.7; 
-        line-height: 1; 
-        margin-left: 0.5em; 
-        margin-top: 5px;
-        transition: opacity 0.2s;
-        flex-shrink: 0;
-      }
-
-      .case-list-link:hover::after { opacity: 1; }
-
-      .case-list-dot {
-        color: #eb6100;
-        font-size: 20px;
-        margin-right: 10px;
-        line-height: 1;
-        margin-top: 3px;
-        flex-shrink: 0;
-      }
-
-      .case-list-title {
-        font-size: 1.1rem;
-        font-weight: 500;
-        line-height: 1.5;
-      }
-
-      .case-list-price-box {
-        width: 100%;
-        text-align: right;
-        padding-left: 25px;
-        box-sizing: border-box;
-        white-space: nowrap;
-      }
-
-      .case-list-price-num {
-        color: #e62e2e;
-        font-size: 20px;
-        font-weight: bold;
-        font-family: Arial, sans-serif;
-      }
-
-      .case-list-price-unit {
-        color: #666;
-        font-size: 14px;
-        margin-left: 2px;
-      }
-
-      /* --- 按鈕樣式 (展開/收起) --- */
-      .case-list-more-btn {
-        display: block;
-        width: 100%;
-        text-align: center;
-        padding: 12px 0;
-        margin-top: 15px;
-        background-color: #fff;
-        color: #eb6110;
-        font-size: 1em;
-        cursor: pointer;
-        border: 1px dashed #fedcba;
-        transition: all 0.2s;
-        user-select: none; /* 防止連點選取文字 */
-      }
-      .case-list-more-btn:hover {
-        background-color: #fff6ee;
-        color: #eb6100;
-        border-color: #eb6100;
-      }
-      
-      /* 按鈕箭頭動畫 */
-      .case-list-more-btn .arrow-icon {
-        display: inline-block;
-        transition: transform 0.3s;
-        margin-left: 5px;
-      }
-      .case-list-more-btn.is-active .arrow-icon {
-        transform: rotate(180deg); /* 展開時旋轉箭頭 */
-      }
-
-      .case-list-message {
-        text-align: center; color: #888; padding: 20px;
-      }
-
-      /* =========================================
-         ★ 電腦版樣式覆蓋 (min-width: 992px) ★
-         ========================================= */
-      @media (min-width: 992px) {
-        .case-list-container { max-width: 1000px; } 
-
-        .case-list-item {
-          flex-direction: row;        
-          justify-content: space-between;
-          align-items: center;        
+        /* 隱藏狀態 - 完全隱藏，不佔據空間 */
+        .expert-card-hidden {
+            opacity: 0 !important;
+            /* visibility: hidden !important;*/
+            transform: scale(0.8) !important;
+            transition: none !important;
+            pointer-events: none !important;
+            will-change: transform, opacity;
         }
 
-        .case-list-link {
-          width: auto;                
-          margin-bottom: 0;           
-          padding-right: 20px;
-          align-items: center;        
-          flex: 1;
+        .expert-card-fallback {
+            opacity: 1 !important;
+            visibility: visible !important;
+            transform: scale(1) translateY(0) !important;
+            transition: all .6s cubic-bezier(.4, 0, .2, 1) !important;
+            will-change: transform, opacity;
         }
 
-        .case-list-link::after { margin-top: 0; }
-        .case-list-dot { margin-top: 0; }
-
-        .case-list-price-box {
-          width: auto;                
-          text-align: right;
-          padding-left: 0;            
+        /* 金牌經紀人容器 */
+        .expert-card-wrapper {
+            position: relative;
+            /* 外框效果由padding控制 */
+            /* padding: 3px;    */
+            border-radius: 8px;
+            overflow: hidden;
+            width: 100%;
+            max-width: 1000px;
+            z-index: 0;
+            line-height: 1.5;
+            letter-spacing: 0;
+            margin: 20px 0;
+            isolation: isolate;
         }
-      }
+
+        .expert-card-wrapper::before {
+            content: "";
+            position: absolute;
+            top: -3px;
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
+            border-radius: inherit;
+            /* 與外層一致的圓角 */
+            background: linear-gradient(130deg, #fffaea, #eccb7d, #fff2d4, #f4c978, #ffedb1, #e6c079, #e7c57c);
+            background-size: 400% 400%;
+            animation: borderFlow 10s linear infinite;
+            z-index: -2;
+            box-shadow: 0 0 16px rgba(4, 255, 0, 0.715);
+            pointer-events: none;
+            /* 不擋內部互動 */
+        }
+
+        @keyframes borderFlow {
+            0% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
+
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+
+        .expert-card {
+            border-radius: 8px;
+            padding: 10px 22px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+
+        /* 卡片金色漸層底內層-固定不動 跟陰影 */
+        .expert-platinum {
+            /* background: linear-gradient(120deg, rgb(255, 227, 126) 0%, #ffe68d 5%, #fff8d2 15%, #fffbec 20%, #ffe68d 55%, #fff7e0 75%, #fcd36c 100%); */
+            /* box-shadow: 0 0 2px #996a1a; */
+        }
+
+        .expert-badge {
+            display: none;
+        }
+
+        .expert-card .expert-badge {
+            background: radial-gradient(circle, #f5d770, #d1a106);
+        }
+
+        .expert-badge i {
+            color: #fff;
+            font-size: 1.8em;
+        }
+
+        @keyframes rotateBadge {
+            0% {
+                transform: rotateY(0deg);
+            }
+
+            100% {
+                transform: rotateY(360deg);
+            }
+        }
+
+        .expert-profile {
+            width: 80px !important;
+            height: 80px !important;
+            border-radius: 12px;
+            border: 3px solid #fff;
+            object-fit: cover;
+            margin-right: 15px !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .1);
+            display: block;
+            aspect-ratio: 1/1;
+            /* 穩定佈局比例 */
+        }
+
+        .expert-info {
+            flex: 1;
+        }
+
+        .expert-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .expert-info .expert-title {
+            color: #9f5f00;
+        }
+
+        .expert-name-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .expert-name {
+            font-size: 1.7rem;
+            font-weight: bold;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .expert-contact-phone {
+            background: linear-gradient(to right, #a45500, #ff9e36);
+        }
+
+        .expert-contact-line {
+            background: linear-gradient(to right, #00a816, #67ca04);
+        }
+
+        .expert-contact {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .expert-contact a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+            min-height: 40px;
+            border-radius: 50%;
+            padding: 0;
+            font-size: 1.4rem;
+            line-height: 1;
+            text-decoration: none;
+            transition: transform .2s ease, filter .2s ease, box-shadow .2s ease;
+            outline: none;
+            color: #fff;
+        }
+
+        .expert-contact a:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.05);
+        }
+
+        .expert-contact a:active {
+            transform: translateY(0);
+            filter: brightness(.98);
+        }
+
+        .expert-contact a:focus-visible {
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 6px rgba(164, 85, 0, .35);
+        }
+
+        .expert-contact a i.fa-phone-alt {
+            font-size: 1.3rem;
+        }
+
+        .expert-contact a i.fa-line {
+            font-size: 1.5rem;
+        }
+
+
+        .expert-name-row .expert-contact a {
+            color: #fff;
+        }
+
+        .expert-footer {
+            /* 證號經紀人隱藏 */
+            display: none;
+            position: relative;
+            z-index: 3;
+            font-size: .5rem;
+            color: #af885c;
+        }
+
+        .expert-level-mark {
+            position: absolute;
+            right: 18px;
+            top: 10px;
+            font-family: "Shrikhand", serif;
+            font-style: italic;
+            font-size: 1.1rem;
+            color: rgba(194, 145, 67, 0.5);
+            opacity: 0;
+            animation: fadeSlideIn .8s ease-out forwards;
+            animation-delay: 1s;
+            pointer-events: none;
+            z-index: 2;
+            text-shadow: 0 1px 1px rgba(255, 255, 255, .4);
+            /* 微提可讀性 */
+        }
+
+        @keyframes fadeSlideIn {
+            0% {
+                transform: translate(0, 20px);
+                opacity: 0;
+            }
+
+            100% {
+                transform: translate(0, 0);
+                opacity: .9;
+            }
+        }
+
+        .expert-contact a span {
+            display: none;
+        }
+
+        .expert-title i {
+            animation: rotateBadge 3s linear infinite;
+        }
+
+        .expert-opacity-0 {
+            opacity: 0;
+            pointer-events: none;
+            visibility: hidden;
+            transition: opacity .2s ease;
+        }
+
+        /* Small-plus 微調 */
+        @media (min-width:414px) {
+            .expert-level-mark {
+                font-size: 1.6rem;
+                right: 10px;
+                top: 6px;
+            }
+        }
+
+        /* ------電腦版調整------- */
+        @media screen and (min-width:992px) {
+            .expert-card-wrapper {
+                /* padding: 6px; */
+                border-radius: 15px;
+            }
+
+            .expert-card-wrapper::before {
+                /* box-shadow: 0 0 16px rgba(106, 70, 19, .715); */
+            }
+
+            .expert-card {
+                border-radius: 15px;
+                padding: 15px 28px;
+            }
+
+            .expert-title {
+                font-size: 1.7rem;
+            }
+
+            .expert-title i {
+                animation: none;
+            }
+
+            /* 確實關閉桌機旋轉 */
+
+            .expert-platinum {
+                /* box-shadow: 0 0 3px #996a1a; */
+            }
+
+            .expert-name-row {
+                gap: 30px;
+            }
+
+            .expert-contact a {
+                width: auto;
+                height: auto;
+                min-height: 44px;
+                /* 桌機/平板更舒適的點擊區 */
+                font-size: 1.4rem;
+                padding: 8px 16px;
+                gap: 8px;
+                border-radius: 10px;
+                letter-spacing: 1.1px;
+            }
+
+            .expert-contact a span {
+                display: inline;
+            }
+
+            .expert-badge {
+                width: 60px;
+                height: 60px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-right: 25px;
+                flex-shrink: 0;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
+                animation: rotateBadge 3s linear infinite;
+            }
+
+            .expert-profile {
+                width: 120px !important;
+                height: 120px !important;
+                border-radius: 12px;
+                border: 4px solid #fff;
+                margin-right: 30px !important;
+                box-shadow: 0 2px 5px #dcad6ccc;
+            }
+
+            .expert-name {
+                font-size: 2.3rem;
+                max-width: 40ch;
+                /* 避免超長姓名撐版 */
+            }
+
+            .expert-level-mark {
+                right: -20px;
+                top: 34px;
+                font-size: 6.5rem;
+            }
+
+            .expert-footer {
+                font-size: .85rem;
+            }
+        }
+
+        /* 無動畫偏好：尊重系統設定 */
+        @media (prefers-reduced-motion: reduce) {
+
+            .expert-title i,
+            .expert-badge,
+            .expert-card-wrapper[data-animate],
+            .expert-level-mark {
+                animation: none !important;
+                transition: none !important;
+            }
+        }
     `;
     document.head.appendChild(style);
   }
 
+  // ==============================================
+  // 2. 輔助函式
+  // ==============================================
+  function getTaiwanTime() {
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    return new Date(utc + (8 * 3600000));
+  }
+
+  function isInTimeRange(start, end) {
+    const parseTW = (val) => {
+      if (!val) return null;
+      let s = String(val).trim().replace(/\//g, '-').replace(' ', 'T');
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) s += 'T00:00:00';
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
+    };
+    try {
+      const now = getTaiwanTime();
+      const s = parseTW(start);
+      const e = parseTW(end);
+      if (s && e) return now >= s && now <= e;
+      if (s && !e) return now >= s;
+      if (!s && e) return now <= e;
+      return true; 
+    } catch (e) { return true; }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function sanitizeHref(raw, isLine) {
+    if (!raw) return '';
+    if (isLine && !raw.includes('http')) return 'https://line.me/ti/p/' + raw;
+    return raw;
+  }
 
   // ==============================================
-  // 2. 主程式邏輯
+  // 3. 核心邏輯
   // ==============================================
-  async function initCaseList() {
-    const widgets = document.querySelectorAll('#case-list, .case-list-widget-target');
-    if (widgets.length === 0) return;
+  async function initExpertSystem() {
+    const container = document.getElementById('expert-container');
+    if (!container) return; 
+
+    // ★★★ 核心修正：在任何事情發生前，先強制隱藏容器 ★★★
+    // 這樣在等待 Google 回傳資料的這幾秒，網頁上什麼都不會顯示
+    container.style.setProperty('display', 'none', 'important');
 
     injectStyles();
 
-    widgets.forEach(w => w.innerHTML = '<div class="case-list-container"><div class="case-list-message">資料載入中...</div></div>');
-
     try {
-      const response = await fetch(API_URL);
-      const allData = await response.json();
+      const res = await fetch(AGENT_API_URL);
+      const allExperts = await res.json();
+      
+      // 去除前後空白，避免對應不到
+      const caseName = (container.dataset.caseName || '').trim();
+      
+      const matches = allExperts.filter(ex => 
+        ex.case_name === caseName && 
+        isInTimeRange(ex.start, ex.end)
+      );
 
-      widgets.forEach(widget => {
-        const targetCaseName = widget.dataset.caseName;
-        renderWidget(widget, targetCaseName, allData);
-      });
+      // ★★★ 如果沒資料：直接結束，容器保持隱藏 ★★★
+      if (matches.length === 0) {
+        return; 
+      }
 
-    } catch (error) {
-      console.error("Widget Error:", error);
-      widgets.forEach(w => w.innerHTML = '<div class="case-list-container"><div class="case-list-message">讀取失敗，請稍後再試。</div></div>');
+      // --- 有資料了，才隨機取一位並渲染 ---
+      const expert = matches[Math.floor(Math.random() * matches.length)];
+      renderExpertCard(container, expert);
+      
+      // 動畫初始化
+      initObserver();
+
+    } catch (err) {
+      console.error('Expert Widget Error:', err);
+      // 發生錯誤時，保持隱藏狀態 (因為第一行已經隱藏了，這裡不需要做額外動作)
     }
   }
 
-  function renderWidget(container, caseName, data) {
-    const filteredItems = data.filter(item => item.case_name === caseName);
+  function renderExpertCard(container, expert) {
+    const lvl = LEVELS[expert.level] || LEVELS["社區專家"];
+    const imageSrc = escapeHtml(expert.image);
+    const telHref = expert.phone ? `tel:${expert.phone}` : '';
+    const lineHref = sanitizeHref(expert.line, true);
 
-    if (filteredItems.length === 0) {
-      container.innerHTML = '<div class="case-list-container"><div class="case-list-message">目前尚無上架物件</div></div>';
-      return;
+    if (imageSrc) {
+      const preload = new Image();
+      preload.src = imageSrc;
     }
 
-    filteredItems.sort((a, b) => {
-      const priceA = parseFloat(a.price.toString().replace(/,/g, '')) || 0;
-      const priceB = parseFloat(b.price.toString().replace(/,/g, '')) || 0;
-      return priceA - priceB;
-    });
-
-    // 判斷裝置決定連結開啟方式
-    // 邏輯：螢幕寬度小於 992px (平板/手機) 用 _self，否則用 _blank
-    const linkTarget = window.innerWidth < 992 ? "_self" : "_blank";
-
-    let html = `
-      <div class="case-list-container">
-        <div class="case-list-header">
-          <span>《 最新上架物件 》</span>
-          <span class="case-list-count">共 ${filteredItems.length} 筆</span>
-        </div>
-        <div class="case-list-ul">
-    `;
-
-    // 輔助函式：產生單一項目 HTML
-    const generateItemHtml = (item) => {
-      let displayPrice = item.price;
-      if (!displayPrice.toString().includes("萬") && displayPrice != 0) {
-         displayPrice += "萬";
-      }
-      return `
-        <div class="case-list-item">
-          <a href="${item.url}" target="${linkTarget}" class="case-list-link">
-            <span class="case-list-dot">•</span>
-            <span class="case-list-title">${item.title}</span>
-          </a>
-          <div class="case-list-price-box">
-            <span class="case-list-price-num">${displayPrice.replace('萬', '')}</span>
-            <span class="case-list-price-unit">萬</span>
+    const html = `
+      <div class="expert-card-wrapper expert-platinum expert-card-hidden" data-animate="flipInY">
+        <div class="expert-card expert-platinum">
+          <div class="expert-badge"><i class="fas ${lvl.icon}"></i></div>
+          
+          <img 
+            alt="頭像"
+            class="expert-profile" 
+            src="${imageSrc}" 
+            loading="eager" 
+            decoding="async"
+            fetchpriority="high"
+            width="120" height="120"
+          >
+          
+          <div class="expert-info">
+            <div class="expert-title"><i class="fas ${lvl.icon}"></i> ${lvl.title}</div>
+            <div class="expert-name-row">
+              <div class="expert-name">${escapeHtml(expert.name)}</div>
+              <div class="expert-contact">
+                ${telHref ? `<a class="expert-contact-phone" href="${telHref}"><i class="fas fa-phone-alt"></i><span>${escapeHtml(expert.phone)}</span></a>` : ''}
+                ${lineHref ? `<a class="expert-contact-line" href="${lineHref}" target="_blank"><i class="fab fa-line"></i><span>LINE</span></a>` : ''}
+              </div>
+            </div>
+            
+            <div class="expert-footer">
+              證號：${escapeHtml(expert.license || '')}｜經紀業：${escapeHtml(expert.company || '')}
+            </div>
+            <div class="expert-level-mark">${lvl.mark}&nbsp;</div>
           </div>
         </div>
-      `;
-    };
+      </div>
+    `;
 
-    // 1. 先輸出前 3 筆 (MAX_VISIBLE_ITEMS)
-    const visibleItems = filteredItems.slice(0, MAX_VISIBLE_ITEMS);
-    visibleItems.forEach(item => {
-      html += generateItemHtml(item);
-    });
-
-    // 2. 如果有更多資料，輸出到隱藏區塊 (Overflow)
-    if (filteredItems.length > MAX_VISIBLE_ITEMS) {
-      const hiddenItems = filteredItems.slice(MAX_VISIBLE_ITEMS);
-      
-      html += `<div class="case-list-overflow" id="overflow-${caseName}">`;
-      hiddenItems.forEach(item => {
-        html += generateItemHtml(item);
-      });
-      html += `</div>`; // 關閉 overflow div
-
-      // 加入切換按鈕
-      const moreCount = hiddenItems.length;
-      // 注意：這裡的 onclick 呼叫了內部的 toggle 函式
-      html += `
-        <div class="case-list-more-btn" onclick="toggleEstateList(this, 'overflow-${caseName}')">
-          <span class="btn-text">查看更多案件 (還有 ${moreCount} 筆)</span>
-          <span class="arrow-icon">▾</span>
-        </div>
-      `;
-    }
-
-    html += `</div></div>`; // 關閉 ul (div) 和 container
     container.innerHTML = html;
+
+    // ★★★ 渲染完成後，最後一步才把容器顯示出來 ★★★
+    container.style.display = ''; 
   }
 
-  // ★ 全域切換函式 (綁定到 window 以便 onclick 呼叫)
-  window.toggleEstateList = function(btn, overflowId) {
-    const overflowDiv = document.getElementById(overflowId);
-    const btnText = btn.querySelector('.btn-text');
-    
-    // 切換 class
-    overflowDiv.classList.toggle('is-expanded');
-    btn.classList.toggle('is-active');
+  // ==============================================
+  // 4. 動畫觸發器
+  // ==============================================
+  function initObserver() {
+    if (!('IntersectionObserver' in window)) return;
 
-    // 判斷狀態修改文字
-    if (overflowDiv.classList.contains('is-expanded')) {
-      btnText.textContent = "收起列表";
-    } else {
-      // 算出原本隱藏的數量 (透過 DOM 計算)
-      const count = overflowDiv.querySelectorAll('.case-list-item').length;
-      btnText.textContent = `查看更多案件 (還有 ${count} 筆)`;
-    }
-  };
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const el = entry.target;
+          el.classList.remove('expert-card-hidden');
+          el.classList.add('animate__animated', 'animate__flipInY', 'animated', 'flipInY');
+          observer.unobserve(el);
+        }
+      });
+    }, { threshold: 0.3 });
+
+    setTimeout(() => {
+      document.querySelectorAll('.expert-card-wrapper[data-animate]').forEach(el => observer.observe(el));
+    }, 100);
+  }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initCaseList);
+    document.addEventListener('DOMContentLoaded', initExpertSystem);
   } else {
-    initCaseList();
+    initExpertSystem();
   }
 
 })();
