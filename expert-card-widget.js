@@ -1,4 +1,3 @@
-<script>
 /* =========================================================================
  * [6] 金牌經紀人（GAS 模式 - 隨機輪播版） + Expert Card Injection System（單檔整合版）
  * ======================================================================= */
@@ -329,5 +328,3 @@ async function initExpertCards() {
 document.readyState === 'loading'
   ? document.addEventListener('DOMContentLoaded', () => initExpertCards())
   : initExpertCards();
-
-</script>
