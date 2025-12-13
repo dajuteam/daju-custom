@@ -46,14 +46,6 @@ async function initExpertCards() {
   const randomIndex = Math.floor(Math.random() * matchingExperts.length);
   finalDisplayList = [ matchingExperts[randomIndex] ]; 
 
-  // ---【備用模式】：顯示全部 (未來想改回來請用這個) ---
-  // 如果以後想改回顯示所有人，請把上面兩行刪掉或註解，並把下面這行打開：
-  // finalDisplayList = matchingExperts;
-
-  // ===========================================================
-  // ★ 修改結束
-  // ===========================================================
-
 
   // 5. 【關鍵】建立舊腳本 (widget) 需要的資料格式
   // 注意：這裡改用我們過濾好的 finalDisplayList 來跑 map
