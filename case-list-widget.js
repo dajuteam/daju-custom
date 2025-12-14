@@ -8,7 +8,7 @@
 
 (function() {
   // ⚡ 設定：請務必將此處換成您部署後的 GAS Web App URL
-  const API_URL = "https://script.google.com/macros/s/AKfycbzkPby9XmQRpggqMqxrbGIoUoxxkm_iDgzPHGAO6yW2e21kZC43-lfsetRTUbCY-lHOfA/exec"; 
+  const API_URL = "https://script.google.com/macros/s/AKfycbwm-nOkU0tZ3sGwEpODv13ljMZVxM30ommpfX-dtvfzAumy0DLi7fAPabElqMrrQSl_MQ/exec"; 
 
   // 設定顯示上限 (現在改為 3)
   const MAX_VISIBLE_ITEMS = 3;
