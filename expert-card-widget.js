@@ -12,7 +12,7 @@
   // =========================================================================
 
   // !!【新】請貼上您在 Step 3 取得的「經紀人」 GAS 網址 !!
-  const AGENT_GAS_URL = "https://script.google.com/macros/s/AKfycbyNJDANOuoqxNeLDl0ygGuWt73R8MrfobTaKHWmRc9yxrIF-Om40uYdR2aqSNwfedIt/exec";
+  const AGENT_GAS_URL = "https://script.google.com/macros/s/AKfycbz-sDaYGPoWDdx2_TrVxrVSIT1i0qVBvTSKiNebeARGRvwsLcXUUeSbMXSiomWNcl9Q/exec";
 
   // =========================================================================
   // 2. CSS 樣式 (Style)
