@@ -439,7 +439,7 @@
             io.unobserve(el);
           }
         });
-      }, { threshold: 0, rootMargin:  '100px 'p
+      }, { threshold: 0, rootMargin:  '100px'
       targets.forEach(el => {
         el.classList.add('expert-observed');
         io.observe(el);
