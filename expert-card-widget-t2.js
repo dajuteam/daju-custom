@@ -1,9 +1,8 @@
 /**
- * Expert Card Widget Integrated v2.1 (Quality & Performance)
- * 優化：
- * 1. 移除 Animate.css 依賴，改用原生 CSS Transition 實現「微上浮」質感。
- * 2. 加入 min-height 預先佔位，解決資料載入時的版面跳動。
- * 3. 針對 iOS Safari 極致優化渲染效能。
+ * Expert Card Widget Integrated v2.1 (Fixed & Optimized)
+ * 修復：修正 observeAnimations 的語法錯誤 (導致背景消失的主因)。
+ * 保留：金屬流動背景特效 (Metal Flow)。
+ * 優化：改用 CSS Transition 微上浮 (Fade Up)，解決 iPhone 卡頓並提升質感。
  */
 
 (function (window, document) {
@@ -15,7 +14,7 @@
   const AGENT_GAS_URL = "https://script.google.com/macros/s/AKfycbz-sDaYGPoWDdx2_TrVxrVSIT1i0qVBvTSKiNebeARGRvwsLcXUUeSbMXSiomWNcl9Q/exec";
 
   // =========================================================================
-  // 2. CSS 樣式 (Style) - 質感微調版
+  // 2. CSS 樣式 (Style)
   // =========================================================================
   const WIDGET_CSS = `
         /* ------ 容器與動畫核心設定 ------ */
@@ -30,17 +29,16 @@
             margin: 20px 0;
             isolation: isolate;
 
-            /* [關鍵優化 1] 預先佔位：避免資料還沒回來時高度為0 */
+            /* [優化] 預先佔位：避免資料還沒回來時高度為0 */
             min-height: 180px; 
-            /* 給一個淡淡的背景色，讓使用者知道這裡有區塊 */
+            /* [優化] 佔位時的背景色 (淡黃色)，讓使用者知道這裡有東西 */
             background-color: rgba(255, 250, 234, 0.3); 
 
-            /* [關鍵優化 2] 初始狀態：隱藏 + 往下位移 */
+            /* [動畫初始狀態]：隱藏 + 往下位移 30px */
             opacity: 0;
-            /* 這裡控制上浮距離，30px 是微上浮，很有質感 */
             transform: translateY(30px); 
 
-            /* [關鍵優化 3] 轉場設定：0.8秒，使用優雅的緩動曲線 */
+            /* [轉場設定]：0.8秒，使用優雅的緩動曲線 */
             transition: opacity 0.8s ease-out, transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
             will-change: opacity, transform;
         }
@@ -51,14 +49,16 @@
             transform: translateY(0);
         }
 
-        /* 流光背景特效 */
+        /* ====== [這裡就是您的金屬流動背景] ====== */
         .expert-card-wrapper::before {
             content: "";
             position: absolute;
             top: -3px; left: -3px; right: -3px; bottom: -3px;
             border-radius: inherit;
+            /* 金屬漸層色 */
             background: linear-gradient(130deg, #fffaea, #eccb7d, #fff2d4, #f4c978, #ffedb1, #e6c079, #e7c57c);
             background-size: 400% 400%;
+            /* 流動動畫 */
             animation: borderFlow 10s linear infinite;
             z-index: -2;
             box-shadow: 0 0 16px rgba(4, 255, 0, 0.715);
@@ -72,6 +72,7 @@
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
         }
+        /* ========================================== */
 
         /* ------ 卡片本體 ------ */
         .expert-card {
@@ -81,8 +82,8 @@
             display: flex;
             align-items: center;
             flex-wrap: wrap;
-            background: #fff; /* 確保內容有白底 */
-            height: 100%; /* 配合 min-height */
+            background: #fff; /* 確保內容有白底，蓋在金屬背景上 */
+            height: 100%; 
         }
 
         /* 徽章與頭像 */
@@ -210,7 +211,6 @@
     },
 
     isInTimeRange(start, end) {
-      // 簡單判斷：若無時間限制則顯示
       if (!start && !end) return true;
       try {
         const now = this.getTaiwanTime();
@@ -232,8 +232,7 @@
 
     generateCardHTML(opt) {
        const lvl = this.LEVELS[opt.level] || this.LEVELS["社區專家"];
-       // 注意：這裡不再需要 expert-card-hidden 或 data-animate
-       // 初始樣式已經寫在 CSS 的 .expert-card-wrapper 裡 (opacity: 0, translateY: 30px)
+       // 樣式已在 CSS 設定 (初始 opacity: 0, translateY: 30px)
        return `
         <div class="expert-card-wrapper">
           <div class="expert-card">
@@ -266,10 +265,9 @@
       return true;
     },
 
-    // 核心動畫偵測器 (修復語法錯誤版)
+    // 核心動畫偵測器 (這裡修復了原本的語法錯誤)
     observeAnimations() {
       if (!('IntersectionObserver' in window)) {
-         // 如果瀏覽器不支援，直接顯示
          document.querySelectorAll('.expert-card-wrapper').forEach(el => el.classList.add('is-visible'));
          return;
       }
@@ -279,18 +277,15 @@
 
       const io = new IntersectionObserver(entries => {
         entries.forEach(entry => {
-          // 只要碰到一點點 (或快要碰到)
           if (entry.isIntersecting) {
             const el = entry.target;
-            // 加入 class 觸發 CSS transition
-            el.classList.add('is-visible');
-            // 動畫只跑一次，跑完就解除觀察
+            el.classList.add('is-visible'); // 觸發上浮
             io.unobserve(el);
           }
         });
       }, { 
           threshold: 0,      // 0 = 碰到邊緣就觸發
-          rootMargin: '100px' // 快滑到前 100px 就觸發 (老闆滑再快都不怕)
+          rootMargin: '100px' // 快滑到前 100px 就觸發
       }); 
 
       targets.forEach(el => io.observe(el));
@@ -309,8 +304,7 @@
       injectFont();
       list.forEach(cfg => this.injectExpertCard(cfg));
       
-      // 資料注入後，立刻啟動偵測
-      // 因為有 min-height，就算資料還沒載入完，容器也在那裡等著被偵測了
+      // 延遲啟動偵測，確保 DOM 已經存在
       setTimeout(() => this.observeAnimations(), 50); 
     }
   };
@@ -326,7 +320,6 @@
     const container = document.querySelector('[data-case-name]');
     if (!container || !container.id) return;
 
-    // 先注入 CSS，讓 min-height 生效，把位子佔出來
     injectStyles(); 
     injectFont();
 
