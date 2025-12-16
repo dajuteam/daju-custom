@@ -1,8 +1,7 @@
 /**
- * Expert Card Widget Integrated v2.1 (Custom FadeUp & Optimization)
- * 優化：移除 Animate.css，改用原生 CSS Transition 實現上浮效果。
- * 修正：修復 IntersectionObserver 語法錯誤。
- * 視覺：保留原有 CSS 設計，僅變更動畫邏輯。
+ * Expert Card Widget Integrated v1.4 (Performance Optimized)
+ * 整合：資料抓取 (GAS)、卡片渲染核心 (Widget)、樣式 (CSS)、外部字體
+ * 優化：移除 animate.css 依賴，改用原生 CSS 上浮動畫，提升 iOS 滾動觸發靈敏度
  */
 
 (function (window, document) {
@@ -12,15 +11,43 @@
   // 1. 設定區域 (Configuration)
   // =========================================================================
 
+  // !! 請確認這是您最新的 GAS 網址 !!
   const AGENT_GAS_URL = "https://script.google.com/macros/s/AKfycbz-sDaYGPoWDdx2_TrVxrVSIT1i0qVBvTSKiNebeARGRvwsLcXUUeSbMXSiomWNcl9Q/exec";
 
   // =========================================================================
   // 2. CSS 樣式 (Style)
   // =========================================================================
   const WIDGET_CSS = `
-        /* 金牌業務卡片的CSS - v2.1 優化版 */
+        /* 金牌業務卡片的CSS - 效能優化版 */
 
-        /* 金牌經紀人容器 (核心動畫層) */
+        /* 1. 初始隱藏狀態：下沉 30px 並透明 */
+        .expert-card-hidden {
+            opacity: 0 !important;
+            visibility: hidden !important;
+            transform: translateY(30px) !important; /* 修改：下沉 30px */
+            will-change: transform, opacity; /* 效能：告知瀏覽器啟用硬體加速 */
+            pointer-events: none !important;
+        }
+
+        /* 2. 觸發動畫：上浮顯示 */
+        .expert-card-visible {
+            visibility: visible !important;
+            animation: expertFadeMoveUp 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+        }
+
+        /* 3. 定義上浮動畫關鍵影格 */
+        @keyframes expertFadeMoveUp {
+            0% {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* 金牌經紀人容器 */
         .expert-card-wrapper {
             position: relative;
             border-radius: 8px;
@@ -32,23 +59,8 @@
             letter-spacing: 0;
             margin: 20px 0;
             isolation: isolate;
-
-            /* [v2.1 新增] 初始狀態：透明 + 下沉 30px */
-            opacity: 0;
-            transform: translateY(30px);
-            
-            /* [v2.1 新增] 轉場設定：0.8秒 平滑上浮 */
-            transition: opacity 0.8s ease-out, transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-            will-change: opacity, transform;
         }
 
-        /* [v2.1 新增] 當 JS 偵測到滑入時，觸發這個狀態 */
-        .expert-card-wrapper.is-visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        /* 金屬流動背景 */
         .expert-card-wrapper::before {
             content: "";
             position: absolute;
@@ -63,8 +75,6 @@
             z-index: -2;
             box-shadow: 0 0 16px rgba(4, 255, 0, 0.715);
             pointer-events: none;
-            /* iOS 防錯位關鍵：強制 GPU 渲染 */
-            transform: translateZ(0);
         }
 
         @keyframes borderFlow {
@@ -80,21 +90,26 @@
             display: flex;
             align-items: center;
             flex-wrap: wrap;
-            /* 建議：若希望金屬背景變邊框，這裡最好加上 background: #fff; */
-            /* 但依照您的要求，不更動既有設計樣式 */
         }
 
-        /* 徽章設定 */
-        .expert-badge { display: none; }
-        .expert-card .expert-badge { background: radial-gradient(circle, #f5d770, #d1a106); }
-        .expert-badge i { color: #fff; font-size: 1.8em; }
+        .expert-badge {
+            display: none;
+        }
+
+        .expert-card .expert-badge {
+            background: radial-gradient(circle, #f5d770, #d1a106);
+        }
+
+        .expert-badge i {
+            color: #fff;
+            font-size: 1.8em;
+        }
 
         @keyframes rotateBadge {
             0% { transform: rotateY(0deg); }
             100% { transform: rotateY(360deg); }
         }
 
-        /* 頭像設定 */
         .expert-profile {
             width: 80px !important;
             height: 80px !important;
@@ -105,6 +120,7 @@
             box-shadow: 0 2px 8px rgba(0, 0, 0, .1);
             display: block;
             aspect-ratio: 1/1;
+            /* iOS 優化：強制開啟硬體加速，避免閃爍 */
             transform: translateZ(0);
             -webkit-transform: translateZ(0);
         }
@@ -116,48 +132,95 @@
             font-weight: 700;
             margin-bottom: 6px;
         }
+
         .expert-info .expert-title { color: #9f5f00; }
 
         .expert-name-row {
-            display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 10px; position: relative; z-index: 10;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 10;
         }
 
         .expert-name {
-            font-size: 1.7rem; font-weight: bold; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-size: 1.7rem;
+            font-weight: bold;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
-        /* 聯絡按鈕 */
         .expert-contact-phone { background: linear-gradient(to right, #a45500, #ff9e36); }
         .expert-contact-line { background: linear-gradient(to right, #00a816, #67ca04); }
 
-        .expert-contact { display: flex; gap: 15px; flex-wrap: wrap; }
+        .expert-contact {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
 
         .expert-contact a {
-            display: inline-flex; align-items: center; justify-content: center;
-            width: 40px; height: 40px; min-width: 40px; min-height: 40px;
-            border-radius: 50%; padding: 0; font-size: 1.4rem; line-height: 1;
-            text-decoration: none; transition: transform .2s ease, filter .2s ease, box-shadow .2s ease;
-            outline: none; color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+            min-height: 40px;
+            border-radius: 50%;
+            padding: 0;
+            font-size: 1.4rem;
+            line-height: 1;
+            text-decoration: none;
+            transition: transform .2s ease, filter .2s ease, box-shadow .2s ease;
+            outline: none;
+            color: #fff;
         }
-        .expert-contact a:hover { transform: translateY(-1px); filter: brightness(1.05); }
-        .expert-contact a:active { transform: translateY(0); filter: brightness(.98); }
-        .expert-contact a:focus-visible { box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 6px rgba(164, 85, 0, .35); }
+
+        .expert-contact a:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.05);
+        }
+
+        .expert-contact a:active {
+            transform: translateY(0);
+            filter: brightness(.98);
+        }
+
+        .expert-contact a:focus-visible {
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 6px rgba(164, 85, 0, .35);
+        }
+
         .expert-contact a i.fa-phone-alt { font-size: 1.3rem; }
         .expert-contact a i.fa-line { font-size: 1.5rem; }
+
         .expert-name-row .expert-contact a { color: #fff; }
 
-        /* 浮水印與標記 */
-        .expert-footer { display: none; position: relative; z-index: 3; font-size: .5rem; color: #af885c; }
-        
+        .expert-footer {
+            display: none;
+            position: relative;
+            z-index: 3;
+            font-size: .5rem;
+            color: #af885c;
+        }
+
         .expert-level-mark {
-            position: absolute; right: 18px; top: 10px;
-            font-family: "Shrikhand", serif; font-style: italic; font-size: 1.1rem;
+            position: absolute;
+            right: 18px;
+            top: 10px;
+            font-family: "Shrikhand", serif;
+            font-style: italic;
+            font-size: 1.1rem;
             color: rgba(194, 145, 67, 0.5);
-            /* 注意：這裡的動畫保留原樣，因為它是內部元素的動畫 */
             opacity: 0;
             animation: fadeSlideIn .8s ease-out forwards;
             animation-delay: 1s;
-            pointer-events: none; z-index: 2;
+            pointer-events: none;
+            z-index: 2;
             text-shadow: 0 1px 1px rgba(255, 255, 255, .4);
         }
 
@@ -168,6 +231,13 @@
 
         .expert-contact a span { display: none; }
         .expert-title i { animation: rotateBadge 3s linear infinite; }
+
+        .expert-opacity-0 {
+            opacity: 0;
+            pointer-events: none;
+            visibility: hidden;
+            transition: opacity .2s ease;
+        }
 
         /* Small-plus 微調 */
         @media (min-width:414px) {
@@ -205,10 +275,9 @@
         }
 
         @media (prefers-reduced-motion: reduce) {
-            .expert-title i, .expert-badge, .expert-level-mark {
-                animation: none !important; transition: none !important;
+            .expert-title i, .expert-badge, .expert-level-mark, .expert-card-visible {
+                animation: none !important; transition: none !important; opacity: 1 !important; transform: none !important;
             }
-            .expert-card-wrapper { transition: none !important; opacity: 1 !important; transform: none !important; }
         }
   `;
 
@@ -245,13 +314,12 @@
         const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
         return new Date(utc + (8 * 3600000));
       } catch (error) {
+        console.warn('ExpertCard: 時間計算錯誤', error);
         return new Date();
       }
     },
 
     isInTimeRange(start, end) {
-      // 若無設定時間，預設為顯示
-      if (!start && !end) return true;
       const parseTW = (val) => {
         if (!val) return null;
         if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
@@ -299,16 +367,16 @@
 
     generateCardHTML(opt) {
       try {
-        const lvl = this.LEVELS[opt.level] || this.LEVELS["社區專家"];
+        const lvl = this.LEVELS[opt.level];
+        if (!lvl) return '';
 
         const imageSrc = this.escapeHtml(opt.image);
         const telClean = this.sanitizeTel(opt.phone);
         const telHref = telClean ? `tel:${telClean}` : '';
         const lineHref = this.sanitizeHref(opt.line, true);
 
-        // [v2.1 修改] 移除了 data-animate 與 expert-card-hidden
-        // 現在初始狀態由 CSS 的 .expert-card-wrapper 控制 (opacity: 0)
-        return `<div class="expert-card-wrapper expert-platinum">
+        // 移除 data-animate，改為純 CSS 類別控制
+        return `<div class="expert-card-wrapper expert-platinum expert-card-hidden">
   <div class="expert-card expert-platinum">
     <div class="expert-badge"><i class="fas ${lvl.icon}"></i></div>
     <img
@@ -356,31 +424,33 @@
       }
     },
 
-    // [v2.1 優化] 簡化的動畫偵測器
     observeAnimations() {
-      // 檢查瀏覽器支援度，若不支援則直接顯示
-      if (!('IntersectionObserver' in window)) {
-         document.querySelectorAll('.expert-card-wrapper').forEach(el => el.classList.add('is-visible'));
-         return;
-      }
-
-      // 抓取還沒顯示的卡片
-      const targets = document.querySelectorAll('.expert-card-wrapper:not(.is-visible)');
+      if (!('IntersectionObserver' in window)) return;
+      // 選取沒有被偵測過的卡片
+      const targets = document.querySelectorAll('.expert-card-wrapper:not(.expert-observed)');
       if (!targets.length) return;
 
+      // 修改：更靈敏的偵測設定
       const io = new IntersectionObserver(entries => {
         entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            const el = entry.target;
-            // [v2.1] 觸發自寫的 CSS Transition
-            el.classList.add('is-visible');
-            // 動畫跑完就不需要再觀察了
+          if (!entry.isIntersecting) return;
+          const el = entry.target;
+          try {
+            // 移除隱藏 class，加入動畫 class
+            el.classList.remove('expert-card-hidden');
+            el.classList.add('expert-card-visible');
+          } catch (err) {
+            // 降級處理：直接顯示
+            el.style.opacity = '1';
+            el.style.visibility = 'visible';
+            el.style.transform = 'translateY(0)';
+          } finally {
             io.unobserve(el);
           }
         });
-      }, { 
-          threshold: 0,       // 只要碰到邊緣就觸發
-          rootMargin: '100px' // [重要] 在快滑到前 100px 就預先載入，解決老闆滑太快的問題
+      }, {
+        threshold: 0,        // 修改：一接觸範圍就觸發，不等 30%
+        rootMargin: '100px'  // 修改：在視窗外 100px 就開始觸發，增加預載時間
       });
 
       targets.forEach(el => {
@@ -402,8 +472,7 @@
         injectStyles();
         injectFont();
         list.forEach(cfg => this.injectExpertCard(cfg));
-        // 延遲一點點執行偵測，確保 DOM 已經插入
-        setTimeout(() => this.observeAnimations(), 50);
+        this.observeAnimations();
       } catch (error) {
         console.error('ExpertCard: 初始化失敗', error);
       }
@@ -442,7 +511,7 @@
 
     // ---【目前模式】：隨機輪播 ---
     const randomIndex = Math.floor(Math.random() * matchingExperts.length);
-    const finalDisplayList = [ matchingExperts[randomIndex] ]; 
+    const finalDisplayList = [ matchingExperts[randomIndex] ];
 
     window.expertCardList = finalDisplayList.map(expert => {
       return {
