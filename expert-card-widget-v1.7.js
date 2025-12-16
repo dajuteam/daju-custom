@@ -1,7 +1,8 @@
 /**
- * Expert Card Widget Integrated v1.7 (Precision Layout Edition)
- * 整合：資料抓取 (GAS)、預載機制 (Preload)、防跳動佔位 (Placeholder)
- * 更新：依據精確測量的尺寸 (Mobile: 144px, Desktop: 190px) 設定預留高度
+ * Expert Card Widget Integrated v1.5 Static (No Animation Edition)
+ * 整合：資料抓取 (GAS)、卡片渲染 (Widget)、樣式 (CSS)
+ * 特色：【靜態顯示】移除所有進場動畫，資料載入後直接顯示，追求最快體感
+ * 保留：圖片預載機制、iOS 滾動優化、流光邊框特效
  */
 
 (function (window, document) {
@@ -13,45 +14,23 @@
   const AGENT_GAS_URL = "https://script.google.com/macros/s/AKfycbz-sDaYGPoWDdx2_TrVxrVSIT1i0qVBvTSKiNebeARGRvwsLcXUUeSbMXSiomWNcl9Q/exec";
 
   // =========================================================================
-  // 2. CSS 樣式 (已更新精確高度)
+  // 2. CSS 樣式 (靜態版 - 移除動畫相關設定)
   // =========================================================================
   const WIDGET_CSS = `
-        /* --- 防跳動預留空間 (Placeholder) --- */
-        .expert-container-loading {
-            /* 手機版高度計算：卡片本體約 103.188px + 上下Margin 40px = 143.188px
-               設定為 144px 確保空間足夠，避免 Footer 異動
-            */
-            min-height: 144px; 
-            box-sizing: border-box;
-            transition: min-height 0.4s ease-out; /* 無資料時縮回的動畫 */
-        }
-
-        @media screen and (min-width: 992px) {
-            .expert-container-loading {
-                /* 電腦版高度計算：卡片本體 150px + 上下Margin 40px = 190px 
-                */
-                min-height: 190px;
-            }
-        }
-        /* -------------------------------- */
-
+        /* --- 靜態版核心：移除隱藏與動畫 --- */
         .expert-card-hidden {
-            opacity: 0 !important;
-            visibility: hidden !important;
-            transform: translateY(30px) !important;
-            will-change: transform, opacity;
-            pointer-events: none !important;
+            /* 保持預設顯示狀態，不隱藏、不位移 */
+            opacity: 1 !important;
+            visibility: visible !important;
+            transform: none !important;
+            pointer-events: auto !important;
         }
 
         .expert-card-visible {
-            visibility: visible !important;
-            animation: expertFadeMoveUp 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            /* 移除動畫指令 */
+            animation: none !important;
         }
-
-        @keyframes expertFadeMoveUp {
-            0% { opacity: 0; transform: translateY(30px); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
+        /* -------------------------------- */
 
         .expert-card-wrapper {
             position: relative;
@@ -62,10 +41,11 @@
             z-index: 0;
             line-height: 1.5;
             letter-spacing: 0;
-            margin: 20px 0; /* 這裡就是您提到的上下外距 40px (20+20) */
+            margin: 20px 0;
             isolation: isolate;
         }
 
+        /* 流光邊框背景 (保留) */
         .expert-card-wrapper::before {
             content: "";
             position: absolute;
@@ -113,8 +93,9 @@
             box-shadow: 0 2px 8px rgba(0, 0, 0, .1);
             display: block;
             aspect-ratio: 1/1;
-            background-color: #f0f0f0;
-            transform: translateZ(0);
+            background-color: #f0f0f0; 
+            /* iOS 優化保留，雖然沒有進場動畫，但在滾動時能避免圖片閃爍 */
+            transform: translateZ(0); 
             -webkit-transform: translateZ(0);
         }
 
@@ -228,7 +209,7 @@
   }
 
   // =========================================================================
-  // 3. 核心系統
+  // 3. 核心系統 (邏輯完全未動)
   // =========================================================================
   const ExpertCardSystem = {
     observers: [],
@@ -293,6 +274,7 @@
         const telClean = this.sanitizeTel(opt.phone);
         const telHref = telClean ? `tel:${telClean}` : '';
         const lineHref = this.sanitizeHref(opt.line, true);
+
         return `<div class="expert-card-wrapper expert-platinum expert-card-hidden">
   <div class="expert-card expert-platinum">
     <div class="expert-badge"><i class="fas ${lvl.icon}"></i></div>
@@ -333,20 +315,21 @@
       if (!('IntersectionObserver' in window)) return;
       const targets = document.querySelectorAll('.expert-card-wrapper:not(.expert-observed)');
       if (!targets.length) return;
+      
       const io = new IntersectionObserver(entries => {
         entries.forEach(entry => {
           if (!entry.isIntersecting) return;
           const el = entry.target;
           try {
+            // 雖然沒有視覺動畫，但保留 class 切換以確保邏輯完整
             el.classList.remove('expert-card-hidden');
             el.classList.add('expert-card-visible');
           } catch (e) {
-            el.style.opacity = '1';
-            el.style.visibility = 'visible';
-            el.style.transform = 'translateY(0)';
+            // fallback
           } finally { io.unobserve(el); }
         });
       }, { threshold: 0, rootMargin: '100px' });
+      
       targets.forEach(el => { el.classList.add('expert-observed'); io.observe(el); });
       this.observers.push(io);
     },
@@ -378,9 +361,6 @@
     const container = document.querySelector('[data-case-name]');
     if (!container || !container.id) return;
 
-    // --- 1. 立即佔位 (使用您指定的精確高度) ---
-    container.classList.add('expert-container-loading');
-
     const caseName = container.dataset.caseName;
     if (!caseName) return;
 
@@ -391,27 +371,19 @@
       rows = await res.json();
     } catch (err) {
       console.error('[expert-gas] 載入失敗', err);
-      // 失敗時，縮回高度
-      container.classList.remove('expert-container-loading');
-      container.style.minHeight = '0px'; 
       return;
     }
 
     const matchingExperts = rows.filter(expert => expert.case_name === caseName);
-    
-    // --- 2. 判斷資料 ---
     if (matchingExperts.length === 0) {
-      // 沒資料：優雅縮回高度
-      container.classList.remove('expert-container-loading');
-      container.style.minHeight = '0px'; 
-      setTimeout(() => { container.style.display = 'none'; }, 400);
+      container.style.display = 'none';
       return;
     }
 
     const randomIndex = Math.floor(Math.random() * matchingExperts.length);
     const selectedExpert = matchingExperts[randomIndex];
 
-    // --- 3. 圖片背景偷跑預載 ---
+    // 圖片預載機制 (保留，確保秒開)
     if (selectedExpert && selectedExpert.image) {
         const preloadImg = new Image();
         preloadImg.src = selectedExpert.image;
@@ -430,13 +402,7 @@
       container: "#" + container.id
     }];
 
-    // --- 4. 生成卡片並移除佔位 ---
     ExpertCardSystem.init();
-    
-    // 讓卡片接手撐開高度
-    setTimeout(() => {
-        container.classList.remove('expert-container-loading');
-    }, 50);
   }
 
   if (document.readyState === 'loading') {
