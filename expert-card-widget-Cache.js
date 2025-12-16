@@ -1,4 +1,3 @@
-@charset "UTF-8";
 /**
  * Expert Card Widget Integrated v1.8 (Smart Cache Edition)
  * 整合：資料抓取 (GAS)、卡片渲染 (Widget)、樣式 (CSS)、外部字體
