@@ -1,3 +1,4 @@
+@charset "UTF-8";
 /**
  * 房地產物件列表 Widget (V3.1 - Cache Enabled)
  * 更新日誌：
