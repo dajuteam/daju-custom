@@ -1,23 +1,26 @@
 /**
- * Expert Card Widget Integrated v2.1 (Fixed & Optimized)
- * 修復：修正 observeAnimations 的語法錯誤 (導致背景消失的主因)。
- * 保留：金屬流動背景特效 (Metal Flow)。
- * 優化：改用 CSS Transition 微上浮 (Fade Up)，解決 iPhone 卡頓並提升質感。
+ * Expert Card Widget Integrated v2.1 (Custom FadeUp & Optimization)
+ * 優化：移除 Animate.css，改用原生 CSS Transition 實現上浮效果。
+ * 修正：修復 IntersectionObserver 語法錯誤。
+ * 視覺：保留原有 CSS 設計，僅變更動畫邏輯。
  */
 
 (function (window, document) {
   'use strict';
 
   // =========================================================================
-  // 1. 設定區域
+  // 1. 設定區域 (Configuration)
   // =========================================================================
+
   const AGENT_GAS_URL = "https://script.google.com/macros/s/AKfycbz-sDaYGPoWDdx2_TrVxrVSIT1i0qVBvTSKiNebeARGRvwsLcXUUeSbMXSiomWNcl9Q/exec";
 
   // =========================================================================
   // 2. CSS 樣式 (Style)
   // =========================================================================
   const WIDGET_CSS = `
-        /* ------ 容器與動畫核心設定 ------ */
+        /* 金牌業務卡片的CSS - v2.1 優化版 */
+
+        /* 金牌經紀人容器 (核心動畫層) */
         .expert-card-wrapper {
             position: relative;
             border-radius: 8px;
@@ -26,45 +29,42 @@
             max-width: 1000px;
             z-index: 0;
             line-height: 1.5;
+            letter-spacing: 0;
             margin: 20px 0;
             isolation: isolate;
 
-            /* [優化] 預先佔位：避免資料還沒回來時高度為0 */
-            min-height: 180px; 
-            /* [優化] 佔位時的背景色 (淡黃色)，讓使用者知道這裡有東西 */
-            background-color: rgba(255, 250, 234, 0.3); 
-
-            /* [動畫初始狀態]：隱藏 + 往下位移 30px */
+            /* [v2.1 新增] 初始狀態：透明 + 下沉 30px */
             opacity: 0;
-            transform: translateY(30px); 
-
-            /* [轉場設定]：0.8秒，使用優雅的緩動曲線 */
+            transform: translateY(30px);
+            
+            /* [v2.1 新增] 轉場設定：0.8秒 平滑上浮 */
             transition: opacity 0.8s ease-out, transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
             will-change: opacity, transform;
         }
 
-        /* 當 JS 加上這個 class 時，恢復原狀 (顯示 + 回到原位) */
+        /* [v2.1 新增] 當 JS 偵測到滑入時，觸發這個狀態 */
         .expert-card-wrapper.is-visible {
             opacity: 1;
             transform: translateY(0);
         }
 
-        /* ====== [這裡就是您的金屬流動背景] ====== */
+        /* 金屬流動背景 */
         .expert-card-wrapper::before {
             content: "";
             position: absolute;
-            top: -3px; left: -3px; right: -3px; bottom: -3px;
+            top: -3px;
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
             border-radius: inherit;
-            /* 金屬漸層色 */
             background: linear-gradient(130deg, #fffaea, #eccb7d, #fff2d4, #f4c978, #ffedb1, #e6c079, #e7c57c);
             background-size: 400% 400%;
-            /* 流動動畫 */
             animation: borderFlow 10s linear infinite;
             z-index: -2;
             box-shadow: 0 0 16px rgba(4, 255, 0, 0.715);
             pointer-events: none;
-            /* iOS 效能優化 */
-            transform: translateZ(0); 
+            /* iOS 防錯位關鍵：強制 GPU 渲染 */
+            transform: translateZ(0);
         }
 
         @keyframes borderFlow {
@@ -72,9 +72,7 @@
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
         }
-        /* ========================================== */
 
-        /* ------ 卡片本體 ------ */
         .expert-card {
             border-radius: 8px;
             padding: 10px 22px;
@@ -82,11 +80,11 @@
             display: flex;
             align-items: center;
             flex-wrap: wrap;
-            background: #fff; /* 確保內容有白底，蓋在金屬背景上 */
-            height: 100%; 
+            /* 建議：若希望金屬背景變邊框，這裡最好加上 background: #fff; */
+            /* 但依照您的要求，不更動既有設計樣式 */
         }
 
-        /* 徽章與頭像 */
+        /* 徽章設定 */
         .expert-badge { display: none; }
         .expert-card .expert-badge { background: radial-gradient(circle, #f5d770, #d1a106); }
         .expert-badge i { color: #fff; font-size: 1.8em; }
@@ -96,49 +94,87 @@
             100% { transform: rotateY(360deg); }
         }
 
+        /* 頭像設定 */
         .expert-profile {
-            width: 80px !important; height: 80px !important;
-            border-radius: 12px; border: 3px solid #fff;
-            object-fit: cover; margin-right: 15px !important;
+            width: 80px !important;
+            height: 80px !important;
+            border-radius: 12px;
+            border: 3px solid #fff;
+            object-fit: cover;
+            margin-right: 15px !important;
             box-shadow: 0 2px 8px rgba(0, 0, 0, .1);
-            display: block; aspect-ratio: 1/1;
-            transform: translateZ(0); /* iOS 優化 */
+            display: block;
+            aspect-ratio: 1/1;
+            transform: translateZ(0);
+            -webkit-transform: translateZ(0);
         }
 
-        /* 文字資訊 */
         .expert-info { flex: 1; }
-        .expert-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 6px; }
-        .expert-info .expert-title { color: #9f5f00; }
-        .expert-title i { animation: rotateBadge 3s linear infinite; }
 
-        .expert-name-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 10px; position: relative; z-index: 10; }
-        .expert-name { font-size: 1.7rem; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .expert-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .expert-info .expert-title { color: #9f5f00; }
+
+        .expert-name-row {
+            display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 10px; position: relative; z-index: 10;
+        }
+
+        .expert-name {
+            font-size: 1.7rem; font-weight: bold; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
 
         /* 聯絡按鈕 */
         .expert-contact-phone { background: linear-gradient(to right, #a45500, #ff9e36); }
         .expert-contact-line { background: linear-gradient(to right, #00a816, #67ca04); }
+
         .expert-contact { display: flex; gap: 15px; flex-wrap: wrap; }
-        
+
         .expert-contact a {
             display: inline-flex; align-items: center; justify-content: center;
             width: 40px; height: 40px; min-width: 40px; min-height: 40px;
-            border-radius: 50%; color: #fff; text-decoration: none; font-size: 1.4rem;
-            transition: transform .2s ease, filter .2s ease;
+            border-radius: 50%; padding: 0; font-size: 1.4rem; line-height: 1;
+            text-decoration: none; transition: transform .2s ease, filter .2s ease, box-shadow .2s ease;
+            outline: none; color: #fff;
         }
         .expert-contact a:hover { transform: translateY(-1px); filter: brightness(1.05); }
-        .expert-contact a span { display: none; }
-
+        .expert-contact a:active { transform: translateY(0); filter: brightness(.98); }
+        .expert-contact a:focus-visible { box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 6px rgba(164, 85, 0, .35); }
+        .expert-contact a i.fa-phone-alt { font-size: 1.3rem; }
+        .expert-contact a i.fa-line { font-size: 1.5rem; }
         .expert-name-row .expert-contact a { color: #fff; }
 
-        /* 浮水印與RWD */
+        /* 浮水印與標記 */
         .expert-footer { display: none; position: relative; z-index: 3; font-size: .5rem; color: #af885c; }
+        
         .expert-level-mark {
             position: absolute; right: 18px; top: 10px;
             font-family: "Shrikhand", serif; font-style: italic; font-size: 1.1rem;
-            color: rgba(194, 145, 67, 0.5); pointer-events: none; z-index: 2;
+            color: rgba(194, 145, 67, 0.5);
+            /* 注意：這裡的動畫保留原樣，因為它是內部元素的動畫 */
+            opacity: 0;
+            animation: fadeSlideIn .8s ease-out forwards;
+            animation-delay: 1s;
+            pointer-events: none; z-index: 2;
+            text-shadow: 0 1px 1px rgba(255, 255, 255, .4);
         }
 
-        /* 電腦版調整 */
+        @keyframes fadeSlideIn {
+            0% { transform: translate(0, 20px); opacity: 0; }
+            100% { transform: translate(0, 0); opacity: .9; }
+        }
+
+        .expert-contact a span { display: none; }
+        .expert-title i { animation: rotateBadge 3s linear infinite; }
+
+        /* Small-plus 微調 */
+        @media (min-width:414px) {
+            .expert-level-mark { font-size: 1.6rem; right: 10px; top: 6px; }
+        }
+
+        /* ------電腦版調整------- */
         @media screen and (min-width:992px) {
             .expert-card-wrapper { border-radius: 15px; }
             .expert-card { border-radius: 15px; padding: 15px 28px; }
@@ -151,32 +187,33 @@
             }
             .expert-contact a span { display: inline; }
             .expert-badge {
-                display: flex; width: 60px; height: 60px; border-radius: 50%;
-                align-items: center; justify-content: center;
+                width: 60px; height: 60px; border-radius: 50%;
+                display: flex; align-items: center; justify-content: center;
                 margin-right: 25px; flex-shrink: 0;
                 box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
                 animation: rotateBadge 3s linear infinite;
             }
             .expert-profile {
                 width: 120px !important; height: 120px !important;
-                border: 4px solid #fff; margin-right: 30px !important;
+                border-radius: 12px; border: 4px solid #fff;
+                margin-right: 30px !important;
                 box-shadow: 0 2px 5px #dcad6ccc;
             }
             .expert-name { font-size: 2.3rem; max-width: 40ch; }
             .expert-level-mark { right: -20px; top: 34px; font-size: 6.5rem; }
-            .expert-footer { display: block; font-size: .85rem; }
+            .expert-footer { font-size: .85rem; }
         }
-        
+
         @media (prefers-reduced-motion: reduce) {
+            .expert-title i, .expert-badge, .expert-level-mark {
+                animation: none !important; transition: none !important;
+            }
             .expert-card-wrapper { transition: none !important; opacity: 1 !important; transform: none !important; }
-            .expert-title i, .expert-badge { animation: none !important; }
         }
   `;
 
   function injectStyles() {
-    if(document.getElementById('expert-card-css')) return;
     const style = document.createElement('style');
-    style.id = 'expert-card-css';
     style.textContent = WIDGET_CSS;
     document.head.appendChild(style);
   }
@@ -207,20 +244,37 @@
         const now = new Date();
         const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
         return new Date(utc + (8 * 3600000));
-      } catch (error) { return new Date(); }
+      } catch (error) {
+        return new Date();
+      }
     },
 
     isInTimeRange(start, end) {
+      // 若無設定時間，預設為顯示
       if (!start && !end) return true;
+      const parseTW = (val) => {
+        if (!val) return null;
+        if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+        let s = String(val).trim();
+        s = s.replace(/\//g, '-');
+        if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) s += 'T00:00:00';
+        if (!/[zZ]|[+\-]\d{2}:\d{2}$/.test(s)) s += '+08:00';
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? null : d;
+      };
+
       try {
         const now = this.getTaiwanTime();
-        const s = start ? new Date(start) : null;
-        const e = end ? new Date(end) : null;
+        const s = parseTW(start);
+        const e = parseTW(end);
         if (s && e) return now >= s && now <= e;
-        if (s) return now >= s;
-        if (e) return now <= e;
+        if (s && !e) return now >= s;
+        if (!s && e) return now <= e;
         return true;
-      } catch (error) { return true; }
+      } catch (error) {
+        return true;
+      }
     },
 
     escapeHtml(str) {
@@ -230,48 +284,87 @@
       return div.innerHTML;
     },
 
+    sanitizeTel(raw) {
+      return raw ? String(raw).replace(/[^\d+]/g, '') : '';
+    },
+
+    sanitizeHref(raw, allowLine = false) {
+      if (!raw) return '';
+      const s = String(raw).trim();
+      if (/^https?:\/\//i.test(s)) return s;
+      if (/^tel:/i.test(s)) return s;
+      if (allowLine && /^https?:\/\/(line\.me|lin\.ee)\//i.test(s)) return s;
+      return '';
+    },
+
     generateCardHTML(opt) {
-       const lvl = this.LEVELS[opt.level] || this.LEVELS["社區專家"];
-       // 樣式已在 CSS 設定 (初始 opacity: 0, translateY: 30px)
-       return `
-        <div class="expert-card-wrapper">
-          <div class="expert-card">
-            <div class="expert-badge"><i class="fas ${lvl.icon}"></i></div>
-            <img alt="${this.escapeHtml(opt.name)}" class="expert-profile" src="${opt.image}" loading="eager" decoding="sync" />
-            <div class="expert-info">
-              <div class="expert-title"><i class="fas ${lvl.icon}"></i>${lvl.title}</div>
-              <div class="expert-name-row">
-                <div class="expert-name">${this.escapeHtml(opt.name)}</div>
-                <div class="expert-contact">
-                  ${opt.phone ? `<a class="expert-contact-phone" href="tel:${opt.phone}"><i class="fas fa-phone-alt"></i><span>${opt.phone}</span></a>` : ''}
-                  ${opt.line ? `<a class="expert-contact-line" href="${opt.line}" target="_blank"><i class="fab fa-line"></i><span>LINE</span></a>` : ''}
-                </div>
-              </div>
-              <div class="expert-footer">證號：${this.escapeHtml(opt.license)}｜經紀業：${this.escapeHtml(opt.company)}</div>
-              <div class="expert-level-mark">${lvl.mark}</div>
-            </div>
-          </div>
-        </div>`;
+      try {
+        const lvl = this.LEVELS[opt.level] || this.LEVELS["社區專家"];
+
+        const imageSrc = this.escapeHtml(opt.image);
+        const telClean = this.sanitizeTel(opt.phone);
+        const telHref = telClean ? `tel:${telClean}` : '';
+        const lineHref = this.sanitizeHref(opt.line, true);
+
+        // [v2.1 修改] 移除了 data-animate 與 expert-card-hidden
+        // 現在初始狀態由 CSS 的 .expert-card-wrapper 控制 (opacity: 0)
+        return `<div class="expert-card-wrapper expert-platinum">
+  <div class="expert-card expert-platinum">
+    <div class="expert-badge"><i class="fas ${lvl.icon}"></i></div>
+    <img
+      alt="頭像"
+      class="expert-profile"
+      src="${imageSrc}"
+      loading="eager"
+      referrerpolicy="no-referrer"
+      width="120" height="120"
+    />
+    <div class="expert-info">
+      <div class="expert-title"><i class="fas ${lvl.icon}"></i>${lvl.title}</div>
+      <div class="expert-name-row">
+        <div class="expert-name">${this.escapeHtml(opt.name)}</div>
+        <div class="expert-contact">
+          ${telHref ? `<a class="expert-contact-phone" href="${telHref}"><i class="fas fa-phone-alt"></i><span>${this.escapeHtml(opt.phone)}</span></a>` : ''}
+          ${lineHref ? `<a class="expert-contact-line" href="${lineHref}" target="_blank" rel="noopener noreferrer"><i class="fab fa-line"></i><span>LINE</span></a>` : ''}
+        </div>
+      </div>
+      <div class="expert-footer">證號：${this.escapeHtml(opt.license || '')}｜經紀業：${this.escapeHtml(opt.company || '')}</div>
+      <div class="expert-level-mark">${lvl.mark}&nbsp;</div>
+    </div>
+  </div>
+</div>`;
+      } catch (error) {
+        return '';
+      }
     },
 
     injectExpertCard(opt) {
-      if (!opt || !opt.container) return false;
-      const container = document.querySelector(opt.container);
-      if (!container) return false;
-      if (!this.isInTimeRange(opt.start, opt.end)) return false;
+      try {
+        if (!opt || !opt.container || !opt.level || !opt.name) return false;
+        const container = document.querySelector(opt.container);
+        if (!container) return false;
+        if (!this.isInTimeRange(opt.start, opt.end)) return false;
 
-      const html = this.generateCardHTML(opt);
-      container.insertAdjacentHTML('beforeend', html);
-      return true;
+        const html = this.generateCardHTML(opt);
+        if (html) {
+          container.insertAdjacentHTML('beforeend', html);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        return false;
+      }
     },
 
-    // 核心動畫偵測器 (這裡修復了原本的語法錯誤)
+    // [v2.1 優化] 簡化的動畫偵測器
     observeAnimations() {
+      // 檢查瀏覽器支援度，若不支援則直接顯示
       if (!('IntersectionObserver' in window)) {
          document.querySelectorAll('.expert-card-wrapper').forEach(el => el.classList.add('is-visible'));
          return;
       }
 
+      // 抓取還沒顯示的卡片
       const targets = document.querySelectorAll('.expert-card-wrapper:not(.is-visible)');
       if (!targets.length) return;
 
@@ -279,16 +372,21 @@
         entries.forEach(entry => {
           if (entry.isIntersecting) {
             const el = entry.target;
-            el.classList.add('is-visible'); // 觸發上浮
+            // [v2.1] 觸發自寫的 CSS Transition
+            el.classList.add('is-visible');
+            // 動畫跑完就不需要再觀察了
             io.unobserve(el);
           }
         });
       }, { 
-          threshold: 0,      // 0 = 碰到邊緣就觸發
-          rootMargin: '100px' // 快滑到前 100px 就觸發
-      }); 
+          threshold: 0,       // 只要碰到邊緣就觸發
+          rootMargin: '100px' // [重要] 在快滑到前 100px 就預先載入，解決老闆滑太快的問題
+      });
 
-      targets.forEach(el => io.observe(el));
+      targets.forEach(el => {
+        el.classList.add('expert-observed');
+        io.observe(el);
+      });
       this.observers.push(io);
     },
 
@@ -298,14 +396,17 @@
     },
 
     init() {
-      const list = window.expertCardList || [];
-      if (!list.length) return;
-      injectStyles();
-      injectFont();
-      list.forEach(cfg => this.injectExpertCard(cfg));
-      
-      // 延遲啟動偵測，確保 DOM 已經存在
-      setTimeout(() => this.observeAnimations(), 50); 
+      try {
+        const list = window.expertCardList || [];
+        if (!list.length) return;
+        injectStyles();
+        injectFont();
+        list.forEach(cfg => this.injectExpertCard(cfg));
+        // 延遲一點點執行偵測，確保 DOM 已經插入
+        setTimeout(() => this.observeAnimations(), 50);
+      } catch (error) {
+        console.error('ExpertCard: 初始化失敗', error);
+      }
     }
   };
 
@@ -320,34 +421,45 @@
     const container = document.querySelector('[data-case-name]');
     if (!container || !container.id) return;
 
-    injectStyles(); 
-    injectFont();
-
     const caseName = container.dataset.caseName;
-    
+    if (!caseName) return;
+
+    let rows = [];
     try {
-      const res = await fetch(AGENT_GAS_URL);
-      if (!res.ok) throw new Error('API Error');
-      const rows = await res.json();
-
-      const matchingExperts = rows.filter(expert => expert.case_name === caseName);
-      if (matchingExperts.length === 0) {
-        container.style.display = 'none';
-        return;
-      }
-
-      const randomExpert = matchingExperts[Math.floor(Math.random() * matchingExperts.length)];
-      
-      window.expertCardList = [{
-        ...randomExpert,
-        container: "#" + container.id
-      }];
-
-      ExpertCardSystem.init();
-
+      const res = await fetch(AGENT_GAS_URL, { mode: 'cors' });
+      if (!res.ok) throw new Error(`GAS API fetch error`);
+      rows = await res.json();
     } catch (err) {
-      console.error(err);
+      console.error('[expert-gas] 載入失敗', err);
+      return;
     }
+
+    const matchingExperts = rows.filter(expert => expert.case_name === caseName);
+    if (matchingExperts.length === 0) {
+      container.style.display = 'none';
+      return;
+    }
+
+    // ---【目前模式】：隨機輪播 ---
+    const randomIndex = Math.floor(Math.random() * matchingExperts.length);
+    const finalDisplayList = [ matchingExperts[randomIndex] ]; 
+
+    window.expertCardList = finalDisplayList.map(expert => {
+      return {
+        level: expert.level,
+        name: expert.name,
+        phone: expert.phone,
+        line: expert.line,
+        license: expert.license,
+        company: expert.company,
+        image: expert.image,
+        start: expert.start,
+        end: expert.end,
+        container: "#" + container.id
+      };
+    });
+
+    ExpertCardSystem.init();
   }
 
   if (document.readyState === 'loading') {
