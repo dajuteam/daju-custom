@@ -424,11 +424,13 @@
   // 5. 主流程控制 (整合快取機制)
   // =========================================================================
   async function initExpertCards() {
-    const container = document.querySelector('[data-case-name]');
-    if (!container || !container.id) return;
+    // ★ 修改處：這裡改成直接抓 ID，確保只對應金牌經紀人區塊
+    const container = document.getElementById('expert-container');
+    
+    // 如果找不到容器，或容器身上沒有 case-name，就停止
+    if (!container || !container.dataset.caseName) return;
 
     const caseName = container.dataset.caseName;
-    if (!caseName) return;
 
     let rows = [];
     
