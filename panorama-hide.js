@@ -66,7 +66,7 @@
                 <input type="password" class="js-lock-input" placeholder="輸入密碼">
                 <button type="button" class="js-lock-btn">解鎖</button>
             </div>
-            <div class="js-lock-error">密碼錯誤</div>
+            <div class="js-lock-error">暫不開放，有問題請洽大橘團隊</div>
         `;
 
         frames[0].parentNode.insertBefore(lockDiv, frames[0]);
