@@ -1,6 +1,3 @@
-// 實價登錄主程式
-
-
 (function () {
   // === 設定區 ===
   const CONFIG = {
@@ -12,7 +9,7 @@
     EXPIRE_HOURS: 24 // 前端快取保留 24 小時
   };
 
-  // === 1. CSS 樣式注入 (Mobile First) ===
+  // === 1. CSS 樣式注入 (新增 disabled 樣式) ===
   const injectStyles = () => {
     const css = `
       /* === 實價登錄區塊設計 (Mobile First) === */
@@ -23,7 +20,7 @@
         border: 2px dotted #ffda56;
         background: linear-gradient(to right, #fffaf0, #fff);
         box-sizing: border-box;
-        font-family: sans-serif; /* 確保字體繼承或預設 */
+        font-family: sans-serif;
       }
 
       .real-price-body {
@@ -71,7 +68,7 @@
         color: gray;
       }
 
-      /* 按鈕樣式 */
+      /* 按鈕樣式 (正常狀態) */
       .real-price-button {
         display: flex;
         align-items: center;
@@ -86,6 +83,7 @@
         gap: 10px;
         white-space: nowrap;
         font-weight: 500;
+        cursor: pointer;
       }
 
       .real-price-button:hover {
@@ -94,8 +92,18 @@
         transform: translateY(-1px);
       }
       
+      /* === 新增：無效按鈕樣式 (灰色/不可點) === */
+      .real-price-button.disabled {
+        background-color: #e0e0e0 !important; /* 灰色背景 */
+        color: #999 !important; /* 灰色文字 */
+        cursor: default; /* 滑鼠游標變回預設 */
+        pointer-events: none; /* 禁止點擊 */
+        transform: none !important; /* 禁止位移 */
+        box-shadow: none !important;
+      }
+
       .real-price-button i {
-        /* 如果有引入 FontAwesome */
+        /* FontAwesome icon */
       }
 
       /* === 電腦版 (min-width: 992px) === */
@@ -139,13 +147,12 @@
     document.head.appendChild(styleSheet);
   };
 
-  // === 2. 資料獲取邏輯 ===
+  // === 2. 資料獲取邏輯 (維持不變) ===
   const getData = async () => {
     const now = new Date().getTime();
     const cachedData = localStorage.getItem(CONFIG.STORAGE_KEY);
     const cachedTime = localStorage.getItem(CONFIG.STORAGE_TIME_KEY);
 
-    // 檢查 LocalStorage 是否有效
     if (cachedData && cachedTime && (now - cachedTime < CONFIG.EXPIRE_HOURS * 60 * 60 * 1000)) {
       return JSON.parse(cachedData);
     }
@@ -154,25 +161,32 @@
       const response = await fetch(CONFIG.GAS_API_URL);
       if (!response.ok) throw new Error("API Error");
       const data = await response.json();
-
-      // 寫入 LocalStorage
       localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(data));
       localStorage.setItem(CONFIG.STORAGE_TIME_KEY, now);
       return data;
     } catch (error) {
       console.error("實價登錄讀取失敗:", error);
-      // 失敗時若有舊資料，加減用
       if (cachedData) return JSON.parse(cachedData);
       return null;
     }
   };
 
-  // === 3. 渲染邏輯 ===
+  // === 3. 渲染邏輯 (修改：判斷有無網址來改變文字與樣式) ===
   const render = (url) => {
     const container = document.getElementById(CONFIG.CONTAINER_ID);
     if (!container) return;
 
-    // 這裡的 HTML class 名稱都對應上方的 CSS
+    // 判斷是否有網址
+    const hasUrl = !!url; // 轉為布林值 (true/false)
+
+    // 設定文字
+    const titleText = hasUrl ? "查看本案最新實價登錄" : "查看本案最新實價登錄(更新中)";
+    
+    // 設定按鈕屬性
+    const btnClass = hasUrl ? "real-price-button" : "real-price-button disabled";
+    const btnHref = hasUrl ? `href="${url}" target="_blank"` : 'href="javascript:void(0)"'; // 沒網址時給空連結
+    const btnIcon = hasUrl ? '<i class="fas fa-external-link-alt" aria-hidden="true"></i>' : '<i class="fas fa-tools" aria-hidden="true"></i>'; // (選擇性) 沒網址可以換個圖示或不顯示
+
     const html = `
       <div class="real-price-section">
         <div class="real-price-body">
@@ -181,12 +195,12 @@
               src="https://www.dajuteam.com.tw/upload/web/images/assets/real-price-pic.png" 
               onerror="this.style.display='none'"/>
             <div class="real-price-text">
-              <h5 class="real-price-title">查看本案最新實價登錄</h5>
+              <h5 class="real-price-title">${titleText}</h5>
               <p class="real-price-subtext">您將前往樂居網站，本資料由樂居網站提供。</p>
             </div>
           </div>
-          <a class="real-price-button" href="${url}" target="_blank" rel="noopener noreferrer" aria-label="前往樂居網站查看實價登錄">
-            <i class="fas fa-external-link-alt" aria-hidden="true"></i> 
+          <a class="${btnClass}" ${btnHref} rel="noopener noreferrer" aria-label="前往樂居網站">
+            ${btnIcon}
             前往樂居網站
           </a>
         </div>
@@ -195,10 +209,10 @@
     container.innerHTML = html;
   };
 
-  // === 主程式 ===
+  // === 主程式 (修改：強制顯示，即使沒網址) ===
   const init = async () => {
     const container = document.getElementById(CONFIG.CONTAINER_ID);
-    if (!container) return; // 頁面上沒有這個 ID 就不執行
+    if (!container) return;
 
     const caseName = container.dataset.caseName;
     if (!caseName) {
@@ -206,15 +220,14 @@
         return;
     }
 
-    injectStyles(); // 注入 CSS
-    const allData = await getData(); // 取得資料
+    injectStyles(); 
+    const allData = await getData(); 
 
-    if (allData && allData[caseName.trim()]) {
-      render(allData[caseName.trim()]); // 渲染
-    } else {
-      // 找不到資料時隱藏
-      container.style.display = 'none';
-    }
+    // 修改邏輯：不管有沒有資料，都呼叫 render
+    // 如果 allData 裡有該案名，就把網址傳進去；如果沒有，就傳 null
+    const targetUrl = (allData && allData[caseName.trim()]) ? allData[caseName.trim()] : null;
+    
+    render(targetUrl);
   };
 
   if (document.readyState === "loading") {
