@@ -69,7 +69,6 @@
       .real-price-subtext {
         font-size: 0.85rem;
         color: gray;
-        margin: 5px 0 0 0;
       }
 
       /* 按鈕樣式 */
@@ -128,7 +127,6 @@
 
         .real-price-title {
           font-size: 1.5rem;
-          margin-bottom: 5px;
         }
 
         .real-price-button {
