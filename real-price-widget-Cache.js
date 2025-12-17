@@ -86,7 +86,6 @@
         gap: 10px;
         white-space: nowrap;
         font-weight: 500;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
       }
 
       .real-price-button:hover {
