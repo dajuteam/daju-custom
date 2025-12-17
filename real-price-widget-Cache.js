@@ -1,12 +1,10 @@
 (function () {
   // === 設定區 ===
-  const CONFIG = {
-    // 請填入部署後的 GAS 網址
+ const CONFIG = {
     GAS_API_URL: "https://script.google.com/macros/s/AKfycbyDIqujGayWOIOy8lvq8SB-y4Zf6VLVUq2v9pNcrh-pr9Bhv7WKxLW0lmGtoaSglq7s/exec",
-    CONTAINER_ID: "real-price-container", // 對應 HTML ID
-    STORAGE_KEY: "real_price_local_v2",
-    STORAGE_TIME_KEY: "real_price_time_v2",
-    EXPIRE_HOURS: 24 // 前端快取保留 24 小時
+    CONTAINER_ID: "real-price-container",
+    STORAGE_KEY: "real_price_local_v3", // 改個版號，避免跟舊的混到
+    EXPIRE_HOURS: 24 
   };
 
   // === 1. CSS 樣式注入 (新增 disabled 樣式) ===
@@ -147,26 +145,47 @@
     document.head.appendChild(styleSheet);
   };
 
-  // === 2. 資料獲取邏輯 (維持不變) ===
+ // === 2. 資料獲取邏輯 (修改：讀取單一 Key 並解析 timestamp) ===
   const getData = async () => {
     const now = new Date().getTime();
-    const cachedData = localStorage.getItem(CONFIG.STORAGE_KEY);
-    const cachedTime = localStorage.getItem(CONFIG.STORAGE_TIME_KEY);
-
-    if (cachedData && cachedTime && (now - cachedTime < CONFIG.EXPIRE_HOURS * 60 * 60 * 1000)) {
-      return JSON.parse(cachedData);
+    const rawData = localStorage.getItem(CONFIG.STORAGE_KEY);
+    
+    let cache = null;
+    
+    // 嘗試解析現有的快取
+    if (rawData) {
+      try {
+        cache = JSON.parse(rawData);
+      } catch (e) {
+        console.warn("快取格式錯誤，將重新抓取");
+        localStorage.removeItem(CONFIG.STORAGE_KEY);
+      }
     }
 
+    // 檢查快取是否有效 (有資料 + 有時間戳 + 未過期)
+    if (cache && cache.timestamp && (now - cache.timestamp < CONFIG.EXPIRE_HOURS * 60 * 60 * 1000)) {
+      // console.log("使用本地快取 (V3合併版)");
+      return cache.data; // 回傳包在裡面的 data
+    }
+
+    // 無快取或過期，請求 GAS
     try {
       const response = await fetch(CONFIG.GAS_API_URL);
       if (!response.ok) throw new Error("API Error");
       const data = await response.json();
-      localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(data));
-      localStorage.setItem(CONFIG.STORAGE_TIME_KEY, now);
+
+      // === 寫入 (合併時間與資料) ===
+      const payload = {
+        timestamp: now,
+        data: data
+      };
+      localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(payload));
+      
       return data;
     } catch (error) {
       console.error("實價登錄讀取失敗:", error);
-      if (cachedData) return JSON.parse(cachedData);
+      // 失敗時若有舊資料 (就算過期)，加減用
+      if (cache && cache.data) return cache.data;
       return null;
     }
   };
