@@ -1,8 +1,7 @@
 (function() {
     // ================= 設定區 =================
     const CONFIG = {
-        // 您的密碼 (8888 的 Base64)
-        password: "ODg4OA==", 
+        password: "MDgyMQ==", 
         
         targets: "article.cases .aerial-panorama-iframe, article.cases .youtube-video-iframe"
     };
@@ -12,40 +11,36 @@
         const frames = document.querySelectorAll(CONFIG.targets);
         if (frames.length === 0) return;
 
-        // 1. 注入 CSS
+   // 1. 注入鎖定畫面 CSS
         const style = document.createElement('style');
         style.innerHTML = `
             .js-lock-overlay {
-                background: #f8f9fa;
-                border: 2px dashed #ccc;
-                padding: 40px 20px;
-                text-align: center;
-                margin: 20px auto;
+                padding: 15px 15px;
                 border-radius: 8px;
-                max-width: 600px;
+                max-width: 1000px;
                 font-family: sans-serif;
                 color: #555;
                 position: relative;
                 z-index: 10;
             }
-            .js-lock-title { font-size: 1.2em; margin-bottom: 10px; font-weight: bold; color: #333; }
             .js-lock-input { padding: 10px; border: 1px solid #ddd; border-radius: 4px; width: 180px; font-size: 16px; }
             .js-lock-btn { 
-                padding: 10px 20px; 
-                background: #007bff; 
-                color: white; 
+                padding: 10px 30px; 
+                background: #e6e6e6; 
+                color:  #8c8c8c; 
                 border: none; 
                 border-radius: 4px; 
                 cursor: pointer; 
-                font-size: 16px; 
+                font-size: 18px; 
                 margin-left: 5px;
             }
             .js-lock-btn:hover { background: #0056b3; }
-            .js-lock-error { color: #dc3545; margin-top: 10px; display: none; }
+            .js-lock-error { color: #8c8c8c; margin-top: 10px; display: none; }
         `;
         document.head.appendChild(style);
 
         let hasValidVideo = false;
+
 
         // 2. 逐一處理影片
         frames.forEach(function(el) {
@@ -84,7 +79,7 @@
                 <input type="password" class="js-lock-input" placeholder="輸入密碼">
                 <button type="button" class="js-lock-btn">解鎖</button>
             </div>
-            <div class="js-lock-error">密碼錯誤</div>
+            <div class="js-lock-error">暫不開放，有問題請洽大橘總機</div>
         `;
 
         frames[0].parentNode.insertBefore(lockDiv, frames[0]);
