@@ -1,8 +1,10 @@
 (function() {
     // ================= 設定區 =================
     const CONFIG = {
-         password: "MDgyMQ==", 
-         targets: "article.cases .aerial-panorama-iframe, article.cases .youtube-video-iframe"
+        // 您的密碼 (8888 的 Base64)
+        password: "ODg4OA==", 
+        
+        targets: "article.cases .aerial-panorama-iframe, article.cases .youtube-video-iframe"
     };
     // =========================================
 
@@ -10,31 +12,36 @@
         const frames = document.querySelectorAll(CONFIG.targets);
         if (frames.length === 0) return;
 
-        // 1. 注入鎖定畫面 CSS
+        // 1. 注入 CSS
         const style = document.createElement('style');
         style.innerHTML = `
             .js-lock-overlay {
-                padding: 15px 15px;
+                background: #f8f9fa;
+                border: 2px dashed #ccc;
+                padding: 40px 20px;
+                text-align: center;
+                margin: 20px auto;
                 border-radius: 8px;
-                max-width: 1000px;
+                max-width: 600px;
                 font-family: sans-serif;
                 color: #555;
                 position: relative;
                 z-index: 10;
             }
+            .js-lock-title { font-size: 1.2em; margin-bottom: 10px; font-weight: bold; color: #333; }
             .js-lock-input { padding: 10px; border: 1px solid #ddd; border-radius: 4px; width: 180px; font-size: 16px; }
             .js-lock-btn { 
-                padding: 10px 30px; 
-                background: #e6e6e6; 
-                color:  #8c8c8c; 
+                padding: 10px 20px; 
+                background: #007bff; 
+                color: white; 
                 border: none; 
                 border-radius: 4px; 
                 cursor: pointer; 
-                font-size: 18px; 
+                font-size: 16px; 
                 margin-left: 5px;
             }
             .js-lock-btn:hover { background: #0056b3; }
-            .js-lock-error { color: #8c8c8c; margin-top: 10px; display: none; }
+            .js-lock-error { color: #dc3545; margin-top: 10px; display: none; }
         `;
         document.head.appendChild(style);
 
@@ -44,15 +51,24 @@
         frames.forEach(function(el) {
             el.style.display = 'none'; // 先隱藏
 
+            // 取得原始 src
             const rawSrc = el.getAttribute('src');
 
-            // 嚴格檢查：必須有內容且不為空
+            // 嚴格檢查
             if (rawSrc && rawSrc.trim() !== "" && rawSrc.trim() !== "#") {
-                el.dataset.secret = encodeURIComponent(rawSrc); // 網址維持用 URI 編碼
+                try {
+                    // === 關鍵修改：使用 btoa (Base64) 進行強力混淆 ===
+                    // 這樣網址會變成像 "aHR0cHM..." 這種完全看不懂的亂碼
+                    el.dataset.secret = btoa(rawSrc); 
+                    
+                    hasValidVideo = true;
+                } catch (e) {
+                    console.error("網址編碼失敗", e);
+                }
+                // 移除原始 src
                 el.removeAttribute('src'); 
-                hasValidVideo = true;
             } else {
-                el.removeAttribute('src'); // 空的就移除，避免載入當前頁面
+                el.removeAttribute('src');
             }
         });
 
@@ -62,11 +78,13 @@
         const lockDiv = document.createElement('div');
         lockDiv.className = 'js-lock-overlay';
         lockDiv.innerHTML = `
+            <div class="js-lock-title">🔒 內容已加密</div>
+            <div style="margin-bottom:15px;">此內容受密碼保護，請輸入密碼觀看。</div>
             <div>
                 <input type="password" class="js-lock-input" placeholder="輸入密碼">
                 <button type="button" class="js-lock-btn">解鎖</button>
             </div>
-            <div class="js-lock-error">暫不開放，有問題請洽大橘團隊</div>
+            <div class="js-lock-error">密碼錯誤</div>
         `;
 
         frames[0].parentNode.insertBefore(lockDiv, frames[0]);
@@ -80,8 +98,7 @@
             e.preventDefault();
             e.stopPropagation();
 
-            // === 密碼比對邏輯修改 ===
-            // 將 CONFIG 裡的亂碼還原成明文，再跟使用者輸入的比對
+            // 密碼比對
             if (input.value === atob(CONFIG.password)) {
                 
                 lockDiv.style.display = 'none';
@@ -89,13 +106,17 @@
                 frames.forEach(function(el) {
                     if (el.dataset.secret) {
                         try {
-                            const originalUrl = decodeURIComponent(el.dataset.secret);
+                            // === 關鍵修改：使用 atob 解開 Base64 ===
+                            const originalUrl = atob(el.dataset.secret);
+                            
                             el.style.display = 'block';
+                            
+                            // 延遲載入 (解決 360 黑畫面)
                             setTimeout(function() {
                                 el.src = originalUrl;
                                 window.dispatchEvent(new Event('resize'));
                             }, 100);
-                        } catch(err) { console.error(err); }
+                        } catch(err) { console.error("解碼失敗", err); }
                     }
                 });
             } else {
