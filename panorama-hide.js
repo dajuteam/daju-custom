@@ -14,28 +14,23 @@
         const style = document.createElement('style');
         style.innerHTML = `
             .js-lock-overlay {
-                background: #f8f9fa;
-                border: 2px dashed #ccc;
-                padding: 40px 20px;
-                text-align: center;
-                margin: 20px auto;
+                padding: 15px 15px;
                 border-radius: 8px;
-                max-width: 600px;
+                max-width: 1000px;
                 font-family: sans-serif;
                 color: #555;
                 position: relative;
                 z-index: 10;
             }
-            .js-lock-title { font-size: 1.2em; margin-bottom: 10px; font-weight: bold; color: #333; }
             .js-lock-input { padding: 10px; border: 1px solid #ddd; border-radius: 4px; width: 180px; font-size: 16px; }
             .js-lock-btn { 
-                padding: 10px 20px; 
-                background: #007bff; 
-                color: white; 
+                padding: 10px 30px; 
+                background: #e6e6e6; 
+                color:  #8c8c8c; 
                 border: none; 
                 border-radius: 4px; 
                 cursor: pointer; 
-                font-size: 16px; 
+                font-size: 18px; 
                 margin-left: 5px;
             }
             .js-lock-btn:hover { background: #0056b3; }
@@ -67,8 +62,6 @@
         const lockDiv = document.createElement('div');
         lockDiv.className = 'js-lock-overlay';
         lockDiv.innerHTML = `
-            <div class="js-lock-title">🔒 內容已加密</div>
-            <div style="margin-bottom:15px;">此內容受密碼保護，請輸入密碼觀看。</div>
             <div>
                 <input type="password" class="js-lock-input" placeholder="輸入密碼">
                 <button type="button" class="js-lock-btn">解鎖</button>
@@ -89,7 +82,6 @@
 
             // === 密碼比對邏輯修改 ===
             // 將 CONFIG 裡的亂碼還原成明文，再跟使用者輸入的比對
-            // atob('ODg4OA==') 會變成 '8888'
             if (input.value === atob(CONFIG.password)) {
                 
                 lockDiv.style.display = 'none';
