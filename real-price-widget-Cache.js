@@ -1,3 +1,6 @@
+// 實價登錄主程式
+
+
 (function () {
   // === 設定區 ===
   const CONFIG = {
@@ -39,7 +42,7 @@
         text-align: center;
       }
 
-      .real-price-icon {
+      img.real-price-icon {
         width: 50px !important;
         height: auto;
         margin-right: 10px;
@@ -112,7 +115,7 @@
           text-align: left;
         }
 
-        .real-price-icon {
+        img.real-price-icon {
           margin-bottom: 0;
           margin-right: 15px;
           width: 50px;
