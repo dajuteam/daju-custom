@@ -34,7 +34,7 @@
                 margin-left: 5px;
             }
             .js-lock-btn:hover { background: #0056b3; }
-            .js-lock-error { color: #dc3545; margin-top: 10px; display: none; }
+            .js-lock-error { color: #8c8c8c; margin-top: 10px; display: none; }
         `;
         document.head.appendChild(style);
 
