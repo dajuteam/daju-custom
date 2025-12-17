@@ -2,7 +2,7 @@
   // === 設定區 ===
   const CONFIG = {
     // 請填入部署後的 GAS 網址
-    GAS_API_URL: "https://script.google.com/macros/s/您的GAS_ID/exec",
+    GAS_API_URL: "https://script.google.com/macros/s/AKfycbyDIqujGayWOIOy8lvq8SB-y4Zf6VLVUq2v9pNcrh-pr9Bhv7WKxLW0lmGtoaSglq7s/exec",
     CONTAINER_ID: "real-price-container", // 對應 HTML ID
     STORAGE_KEY: "real_price_local_v2",
     STORAGE_TIME_KEY: "real_price_time_v2",
