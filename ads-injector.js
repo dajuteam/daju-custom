@@ -1,4 +1,4 @@
-const ADS_GAS_URL = "您的_GAS_網頁應用程式網址";
+const ADS_GAS_URL = "https://script.google.com/macros/s/AKfycbzvA6Q69iJK4BCBmyhv2BLNClxqJw3Fk6i3KZqQwU5BSda1Ls4BSoFQDyC8ikL12HRJ/exec";
 const LOCAL_CACHE_KEY = "daju_ads_cache";
 const LOCAL_CACHE_EXPIRY = 6 * 60 * 60 * 1000; // 前端快取：6小時 (毫秒)
 
