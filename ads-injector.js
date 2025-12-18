@@ -57,11 +57,15 @@ function buildSlotMap() {
   const nodes = document.querySelectorAll(".ad-slot");
   const map = new Map();
   nodes.forEach(el => {
+    // ✅ 記住原始 class（避免後續 render 累積 class）
+    if (!el.dataset.baseClass) el.dataset.baseClass = el.className;
+
     const slotId = el.dataset.slotId;
     if (slotId) map.set(slotId, el);
   });
   return map;
 }
+
 
 // 4) GAS 版本協議：只拿版本（小封包）
 async function fetchMetaVersion() {
@@ -98,6 +102,11 @@ function setupLazyIframes() {
 
 // 7) 渲染單一 slot
 function renderSlot(slot, adData) {
+  // ✅ 先還原 slot 的原始 class，避免每次 render 都把舊 class 累積起來
+  if (slot.dataset.baseClass != null) {
+    slot.className = slot.dataset.baseClass;
+  }
+
   if (!adData) {
     slot.style.display = "none";
     return;
@@ -106,9 +115,9 @@ function renderSlot(slot, adData) {
   // 清空內容（比 textContent 更乾淨）
   slot.replaceChildren();
 
-  // Class 注入（保留原本行為）
+  // Class 注入（保留原本行為，但不再累積）
   if (adData.class) {
-    adData.class.split(" ").forEach(cls => {
+    adData.class.split(/\s+/).forEach(cls => {
       const c = (cls || "").trim();
       if (c) slot.classList.add(c);
     });
