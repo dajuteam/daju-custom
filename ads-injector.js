@@ -168,60 +168,65 @@ function renderSlot(slot, adData) {
   slot.style.display = hasContent ? "block" : "none";
 }
 
-// 8) 取得 ads（版本協議 + 本地快取）
+// 8) 取得 ads（極速優化版：減少往返請求次數）
 async function getAdsSmart(forceRefresh) {
   const cached = readCache(); // { version, data, timestamp }
 
-  // A) 強制更新：直接抓完整
-  if (forceRefresh) {
-    const full = await fetchAdsByClientVersion(""); // 不帶 v → GAS 回 200 + data
-    if (full && full.code === 200 && full.data) {
-      writeCache({ version: String(full.version || "0"), data: full.data, timestamp: Date.now() });
-      return full.data;
+  // 🚀 優化 A：如果「完全沒有快取」或「強制更新」
+  // 直接打一次完整請求，不要先打 meta，這樣可以減少一次 GAS 冷啟動等待。
+  if (!cached || forceRefresh) {
+    console.log("⚡ 首次載入或強制更新：執行單次全量請求");
+    try {
+      const full = await fetchAdsByClientVersion(""); // v="" 代表直接索取資料
+      if (full && full.code === 200 && full.data) {
+        writeCache({ 
+          version: String(full.version || "0"), 
+          data: full.data, 
+          timestamp: Date.now() 
+        });
+        return full.data;
+      }
+    } catch (e) {
+      console.error("Fetch full ads failed:", e);
     }
-    return null;
+    return cached ? cached.data : null;
   }
 
-  // B) 若本地快取仍在有效期 → 直接用（避免每次都打 meta）
-  if (cached && cached.data && cached.timestamp && (Date.now() - cached.timestamp < LOCAL_CACHE_EXPIRY_MS)) {
+  // 🚀 優化 B：若本地快取仍在 60 秒有效期內 → 秒開 (不與後端交涉)
+  const isFresh = (Date.now() - cached.timestamp < LOCAL_CACHE_EXPIRY_MS);
+  if (isFresh && cached.data) {
     return cached.data;
   }
 
-  // C) 先拿最新版本（小封包）
-  let latestVersion = "0";
+  // 🚀 優化 C：快取過期，但我們有舊資料 → 先拿 Meta 比對版本 (小封包)
   try {
-    latestVersion = await fetchMetaVersion();
-  } catch (_) {
-    // meta 失敗 → 退回快取
-    return cached && cached.data ? cached.data : null;
-  }
-
-  // D) 版本一致 → 延長快取使用
-  if (cached && cached.data && String(cached.version) === String(latestVersion)) {
-    writeCache({ version: String(cached.version), data: cached.data, timestamp: Date.now() });
-    return cached.data;
-  }
-
-  // E) 版本可能不同 → 用 v=舊版本問後端（類 304）
-  try {
-    const check = await fetchAdsByClientVersion(cached && cached.version ? cached.version : "");
-    if (check && check.code === 304 && cached && cached.data) {
-      // 沒變：延長 timestamp
-      writeCache({ version: String(check.version || latestVersion), data: cached.data, timestamp: Date.now() });
+    const latestVersion = await fetchMetaVersion();
+    
+    // 版本一致：延長本地快取壽命，不下載 Data
+    if (String(cached.version) === String(latestVersion)) {
+      writeCache({ ...cached, timestamp: Date.now() });
       return cached.data;
     }
 
+    // 版本不一致：帶 v 參數去抓新的 (後端會判斷回 200 或 304)
+    const check = await fetchAdsByClientVersion(cached.version);
     if (check && check.code === 200 && check.data) {
-      // 有變：更新快取
-      writeCache({ version: String(check.version || latestVersion), data: check.data, timestamp: Date.now() });
+      writeCache({ 
+        version: String(check.version || latestVersion), 
+        data: check.data, 
+        timestamp: Date.now() 
+      });
       return check.data;
+    } else if (check && check.code === 304) {
+      writeCache({ ...cached, timestamp: Date.now() });
+      return cached.data;
     }
-  } catch (_) {
-    // 失敗：退回快取
-    return cached && cached.data ? cached.data : null;
+  } catch (err) {
+    console.warn("Smart check failed, fallback to stale cache.");
+    return cached.data; // 網路出錯時，至少還有舊廣告可以看
   }
 
-  return cached && cached.data ? cached.data : null;
+  return cached.data;
 }
 
 // 9) 主流程
