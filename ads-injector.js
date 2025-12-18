@@ -1,95 +1,92 @@
+// 1. 請再次確認這兩個名稱是否跟您其他程式碼一致
 const ADS_GAS_URL = "https://script.google.com/macros/s/AKfycbzvA6Q69iJK4BCBmyhv2BLNClxqJw3Fk6i3KZqQwU5BSda1Ls4BSoFQDyC8ikL12HRJ/exec";
 const LOCAL_CACHE_KEY = "daju_ads_cache";
-const LOCAL_CACHE_EXPIRY = 6 * 60 * 60 * 1000; // 前端快取：6小時 (毫秒)
+const LOCAL_CACHE_EXPIRY = 6 * 60 * 60 * 1000; 
 
 async function insertAds() {
+    console.log("--- 廣告系統開始執行 ---");
     let ads = null;
 
-    // 1. 嘗試從本地瀏覽器快取讀取
-    const cachedData = localStorage.getItem(LOCAL_CACHE_KEY);
-    if (cachedData) {
-        const cacheObj = JSON.parse(cachedData);
-        const now = new Date().getTime();
-        
-        // 檢查是否過期 (6小時)
-        if (now - cacheObj.timestamp < LOCAL_CACHE_EXPIRY) {
-            console.log("[Ads] 從本地快取載入資料");
-            ads = cacheObj.data;
-        }
-    }
+    // 【檢查重點】強制重新整理偵測
+    const forceRefresh = new URLSearchParams(window.location.search).has('refresh');
 
-    // 2. 如果本地沒快取或已過期，才向 GAS 請求
-    if (!ads) {
-        try {
-            console.log("[Ads] 本地無效，向伺服器請求...");
-            const res = await fetch(ADS_GAS_URL);
-            if (!res.ok) throw new Error("API 請求失敗");
-            ads = await res.json();
-
-            // 將結果存入本地快取，附帶當前時間戳
-            const cacheToSave = {
-                data: ads,
-                timestamp: new Date().getTime()
-            };
-            localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(cacheToSave));
-            
-        } catch (err) {
-            console.error("[Ads] 伺服器載入失敗:", err);
-            // 這裡可以選擇：失敗時要不要暫時用舊的快取墊一下 (即便過期)
-            if (cachedData) {
-                ads = JSON.parse(cachedData).data;
-                console.warn("[Ads] API 失敗，降級使用過期快取墊檔");
+    // 1. 嘗試讀取本地快取
+    try {
+        const cachedData = localStorage.getItem(LOCAL_CACHE_KEY);
+        if (cachedData && !forceRefresh) {
+            const cacheObj = JSON.parse(cachedData);
+            if (Date.now() - cacheObj.timestamp < LOCAL_CACHE_EXPIRY) {
+                ads = cacheObj.data;
+                console.log("✅ 成功讀取本地快取資料");
             }
         }
+    } catch (e) {
+        console.warn("⚠️ 無法讀取 LocalStorage", e);
     }
 
-    // 3. 渲染邏輯 (與之前相同)
-    if (!ads) return;
+    // 2. 如果沒快取，則抓取 GAS
+    if (!ads) {
+        try {
+            console.log("🌐 正在連線 GAS 抓取最新廣告...");
+            const res = await fetch(ADS_GAS_URL);
+            if (!res.ok) throw new Error("網路請求失敗");
+            
+            ads = await res.json();
+            console.log("📥 GAS 回傳原始資料:", ads);
 
-    document.querySelectorAll('.ad-slot').forEach(function (slot) {
+            // 【關鍵點】嘗試寫入快取並立即檢查
+            const cacheToSave = { data: ads, timestamp: Date.now() };
+            localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(cacheToSave));
+            
+            if (localStorage.getItem(LOCAL_CACHE_KEY)) {
+                console.log("✨ LocalStorage 寫入成功！");
+            } else {
+                console.error("❌ LocalStorage 寫入失敗（原因不明）");
+            }
+        } catch (err) {
+            console.error("❌ GAS 抓取失敗:", err);
+            return;
+        }
+    }
+
+    // 3. 渲染邏輯
+    const slots = document.querySelectorAll('.ad-slot');
+    slots.forEach(slot => {
         const slotId = slot.dataset.slotId;
         const adData = ads[slotId];
 
-        if (!adData) {
+        if (adData) {
+            console.log(`🎯 匹配成功: [${slotId}]，開始渲染內容`);
+            slot.textContent = ''; // 清空內容
+            
+            // 執行渲染 (這裡直接寫在裡面確保不報錯)
+            if (adData.type === "image" && adData.img) {
+                const a = document.createElement('a');
+                a.href = adData.link || "#";
+                a.target = "_blank";
+                a.rel = "noopener noreferrer";
+                const img = document.createElement('img');
+                img.src = adData.img;
+                img.style.width = "100%";
+                img.alt = adData.alt || "廣告";
+                a.appendChild(img);
+                slot.appendChild(a);
+            } else if (adData.type === "youtube" && adData.video) {
+                slot.innerHTML = `<iframe width="100%" height="315" src="${adData.video}" frameborder="0" allowfullscreen></iframe>`;
+            } else if (adData.type === "html" && adData.html) {
+                slot.innerHTML = adData.html;
+            }
+            slot.style.display = 'block';
+        } else {
+            // 如果沒資料就隱藏
             slot.style.display = 'none';
-            return;
         }
-
-        slot.textContent = '';
-        if (adData.class) {
-            adData.class.split(' ').forEach(cls => { if(cls) slot.classList.add(cls); });
-        }
-
-        // --- 根據 type 渲染 (image/youtube/html) ---
-        // (此處保留您之前的渲染邏輯，代碼同上一個回覆)
-        renderElement(slot, adData); 
     });
 }
 
-// 輔助函式：您可以將原本的 createElement 邏輯包在這裡
-function renderElement(slot, adData) {
-    if (adData.type === "image" && adData.img) {
-        const link = document.createElement('a');
-        link.href = adData.link || '#';
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        const img = document.createElement('img');
-        img.src = adData.img;
-        img.alt = adData.alt || "廣告圖片";
-        link.appendChild(img);
-        slot.appendChild(link);
-        slot.style.display = 'block';
-    } else if (adData.type === "youtube" && adData.video) {
-        const iframe = document.createElement('iframe');
-        iframe.className = "youtube-video-iframe";
-        iframe.src = adData.video;
-        iframe.title = adData.title || "video";
-        iframe.frameBorder = "0";
-        iframe.allowFullscreen = true;
-        slot.appendChild(iframe);
-        slot.style.display = 'block';
-    } else if (adData.type === "html" && adData.html) {
-        slot.innerHTML = adData.html;
-        slot.style.display = 'block';
-    }
+// 啟動 (確保 HTML 載入完畢)
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", insertAds);
+} else {
+    insertAds();
 }
