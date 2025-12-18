@@ -8,7 +8,7 @@ const LOCAL_CACHE_KEY = "daju_ads_cache";
 
 // ✅ 修正：原本 60 是毫秒，會幾乎每次都重抓。這裡改成「毫秒」。
 // 你可以依需求調整，例如 10 分鐘：10 * 60 * 1000
-const LOCAL_CACHE_EXPIRY_MS = 60 * 1000; // 60 秒
+const LOCAL_CACHE_EXPIRY_MS = 15 * 60 * 1000; // 60 秒
 
 // 1) 自動注入 CSS 樣式
 function injectStyles() {
