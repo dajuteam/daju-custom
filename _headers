@@ -1,0 +1,9 @@
+# 針對所有 JS 檔案設定編碼與快取
+/*.js
+  Content-Type: application/javascript; charset=utf-8
+  Cache-Control: public, max-age=0, must-revalidate
+
+# 針對所有 CSS 檔案設定編碼
+/*.css
+  Content-Type: text/css; charset=utf-8
+  Cache-Control: public, max-age=0, must-revalidate
