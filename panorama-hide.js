@@ -52,9 +52,7 @@
             // 嚴格檢查
             if (rawSrc && rawSrc.trim() !== "" && rawSrc.trim() !== "#") {
                 try {
-                    // === 關鍵修改：使用 btoa (Base64) 進行強力混淆 ===
-                    // 這樣網址會變成像 "aHR0cHM..." 這種完全看不懂的亂碼
-                    el.dataset.secret = btoa(rawSrc); 
+                      el.dataset.secret = btoa(rawSrc); 
                     
                     hasValidVideo = true;
                 } catch (e) {
@@ -73,8 +71,6 @@
         const lockDiv = document.createElement('div');
         lockDiv.className = 'js-lock-overlay';
         lockDiv.innerHTML = `
-            <div class="js-lock-title">🔒 內容已加密</div>
-            <div style="margin-bottom:15px;">此內容受密碼保護，請輸入密碼觀看。</div>
             <div>
                 <input type="password" class="js-lock-input" placeholder="輸入密碼">
                 <button type="button" class="js-lock-btn">解鎖</button>
