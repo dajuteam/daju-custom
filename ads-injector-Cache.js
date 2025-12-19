@@ -12,7 +12,7 @@ const LOCAL_CACHE_KEY = "daju_ads_cache";
 const LOCAL_CACHE_EXPIRY_MS = 15 * 60 * 1000; 
 
 // 🚀 [快速開關] 想看提示設為 true，想隱藏設為 false
-const SHOW_LOADING_UI = true; 
+const SHOW_LOADING_UI = false; 
 
 // 1) CSS 注入
 function injectStyles() {
