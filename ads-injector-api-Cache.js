@@ -1,4 +1,5 @@
 /**
+ * 大橘廣告管理系統API版本 (V4.3 - Edge Optimized Final Paste)
  * Daju Ad Management System (V4.3 - Edge Optimized Final Paste)
  * 核心：釋放 Cloudflare Edge Cache、?refresh 真正繞過快取、Loading 防閃爍、請求超時保護、零 CLS 跳動（不做骨架屏）
  *
