@@ -1,40 +1,31 @@
 /**
- * Expert Card Widget V4.7 (Animation Fix)
- * Features: SWR, Zero CLS, Original Float-Up Animation Restored
+ * Expert Card Widget V4.6 (Silent Mode)
+ * Features: SWR, 304 Revalidation, Zero CLS, No UI Disturbance
  */
 (function (window, document) {
   'use strict';
 
   const CONFIG = {
-    API_URL: "https://daju-expert-card-api.dajuteam88.workers.dev",
+    // 請確認這是不是您最新的 GAS 發布網址
+    API_URL: "https://script.google.com/macros/s/AKfycbz-sDaYGPoWDdx2_TrVxrVSIT1i0qVBvTSKiNebeARGRvwsLcXUUeSbMXSiomWNcl9Q/exec",
     CACHE_KEY: 'daju_expert_v4_store',
     TTL: 15 * 60 * 1000,     // 15分鐘
     FETCH_TIMEOUT_MS: 8000   // 8秒熔斷
   };
 
   // =========================================================
-  // CSS (修正動畫衝突)
+  // CSS (Zero CLS Only, No Loading UI)
   // =========================================================
   const WIDGET_CSS = `
-    /* Zero CLS 控制：外層只負責佔位與顯示，不搶戲 */
+    /* Zero CLS: V4 專用隱藏 Class */
     .expert-container-v4 { display: none; } 
-    .expert-container-v4.loaded { display: block; } /* 移除這裡的 animation，讓卡片自己演 */
+    .expert-container-v4.loaded { display: block; animation: expertFadeIn 0.5s ease forwards; }
+    @keyframes expertFadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* 您的原始動畫 (保留) */
+    /* 原始樣式保留 */
     .expert-card-hidden { opacity: 0 !important; visibility: hidden !important; transform: translateY(30px) !important; will-change: transform, opacity; pointer-events: none !important; }
-    
-    /* 這裡稍微加強動畫持續時間與曲線，讓浮出感更明顯 */
-    .expert-card-visible { 
-        visibility: visible !important; 
-        animation: expertFadeMoveUp 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; 
-    }
-    
-    @keyframes expertFadeMoveUp { 
-        0% { opacity: 0; transform: translateY(30px); } 
-        100% { opacity: 1; transform: translateY(0); } 
-    }
-
-    /* 以下完全保留原樣 */
+    .expert-card-visible { visibility: visible !important; animation: expertFadeMoveUp 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
+    @keyframes expertFadeMoveUp { 0% { opacity: 0; transform: translateY(30px); } 100% { opacity: 1; transform: translateY(0); } }
     .expert-card-wrapper { position: relative; border-radius: 8px; overflow: hidden; width: 100%; max-width: 1000px; z-index: 0; line-height: 1.5; letter-spacing: 0; margin: 20px 0; isolation: isolate; }
     .expert-card-wrapper::before { content: ""; position: absolute; top: -3px; left: -3px; right: -3px; bottom: -3px; border-radius: inherit; background: linear-gradient(130deg, #fffaea, #eccb7d, #fff2d4, #f4c978, #ffedb1, #e6c079, #e7c57c); background-size: 400% 400%; animation: borderFlow 10s linear infinite; z-index: -2; box-shadow: 0 0 16px rgba(4, 255, 0, 0.715); pointer-events: none; }
     @keyframes borderFlow { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
@@ -99,7 +90,7 @@
   async function fetchFromNetwork(currentVersion = '') {
     const url = `${CONFIG.API_URL}?v=${currentVersion}`;
     
-    // Timeout
+    // Timeout 熔斷 (無 UI 計時器)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), CONFIG.FETCH_TIMEOUT_MS);
 
@@ -205,13 +196,11 @@
        const selected = matchingExperts[Math.floor(Math.random() * matchingExperts.length)];
        container.innerHTML = this.generateCardHTML(selected);
        
-       // UI: 顯示 (先讓外框出來，再讓裡面的卡片浮出來)
+       // UI: 顯示 (移除隱藏 class)
        requestAnimationFrame(() => {
-          container.classList.add('loaded'); // 外框瞬間出現 (無動畫)
-          
+          container.classList.add('loaded'); // 這裡才顯示
           const card = container.querySelector('.expert-card-wrapper');
           if(card) {
-             // 稍微延遲一下下，確保外框已經 display: block 了，卡片才開始跑動畫
              setTimeout(() => {
                 card.classList.remove('expert-card-hidden');
                 card.classList.add('expert-card-visible');
@@ -237,6 +226,8 @@
     // 1. Zero CLS 初始化
     const container = document.getElementById('expert-container');
     if (container) container.classList.add('expert-container-v4');
+
+    // (Loading UI 已移除)
 
     injectStyles();
     
