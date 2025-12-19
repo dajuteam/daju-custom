@@ -1,29 +1,35 @@
 /**
- * Expert Card Widget V4.7 (Animation Fix)
- * Features: SWR, Zero CLS, Original Float-Up Animation Restored
+ * Expert Card Widget V4.8 (Scroll-Triggered Animation)
+ * Features: SWR, Zero CLS, Intersection Observer (Always Animate on View)
  */
 (function (window, document) {
   'use strict';
 
   const CONFIG = {
-    API_URL: "https://daju-expert-card-api.dajuteam88.workers.dev",
+    API_URL: "https://script.google.com/macros/s/AKfycbz-sDaYGPoWDdx2_TrVxrVSIT1i0qVBvTSKiNebeARGRvwsLcXUUeSbMXSiomWNcl9Q/exec",
     CACHE_KEY: 'daju_expert_v4_store',
     TTL: 15 * 60 * 1000,     // 15分鐘
     FETCH_TIMEOUT_MS: 8000   // 8秒熔斷
   };
 
   // =========================================================
-  // CSS (修正動畫衝突)
+  // CSS (Zero CLS + Animation)
   // =========================================================
   const WIDGET_CSS = `
-    /* Zero CLS 控制：外層只負責佔位與顯示，不搶戲 */
+    /* Zero CLS: 容器預設隱藏 */
     .expert-container-v4 { display: none; } 
-    .expert-container-v4.loaded { display: block; } /* 移除這裡的 animation，讓卡片自己演 */
+    .expert-container-v4.loaded { display: block; } 
 
-    /* 您的原始動畫 (保留) */
-    .expert-card-hidden { opacity: 0 !important; visibility: hidden !important; transform: translateY(30px) !important; will-change: transform, opacity; pointer-events: none !important; }
+    /* 初始狀態：隱藏且下沉 */
+    .expert-card-hidden { 
+        opacity: 0 !important; 
+        visibility: hidden !important; 
+        transform: translateY(30px) !important; 
+        will-change: transform, opacity; 
+        pointer-events: none !important; 
+    }
     
-    /* 這裡稍微加強動畫持續時間與曲線，讓浮出感更明顯 */
+    /* 觸發狀態：浮出動畫 (加強了貝茲曲線，更有質感) */
     .expert-card-visible { 
         visibility: visible !important; 
         animation: expertFadeMoveUp 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; 
@@ -79,16 +85,12 @@
 
     // A. Local Hit
     if (cache && cache.data && (now - cache.timestamp < CONFIG.TTL)) {
-      console.log('[Expert V4] Local Hit');
       return cache.data;
     }
 
     // B. SWR Mode
     if (cache && cache.data) {
-      console.log('[Expert V4] SWR Mode');
-      fetchFromNetwork(cache.version).then(newData => {
-         if (newData) console.log('[Expert V4] Background updated');
-      });
+      fetchFromNetwork(cache.version); // Background update
       return cache.data; 
     }
 
@@ -98,8 +100,6 @@
 
   async function fetchFromNetwork(currentVersion = '') {
     const url = `${CONFIG.API_URL}?v=${currentVersion}`;
-    
-    // Timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), CONFIG.FETCH_TIMEOUT_MS);
 
@@ -108,13 +108,11 @@
           signal: controller.signal,
           cache: "no-cache" 
       });
-      
       clearTimeout(timeoutId);
 
       const json = await res.json();
 
       if (json.code === 304) {
-        console.log('[Expert V4] 304 Not Modified');
         const raw = localStorage.getItem(CONFIG.CACHE_KEY);
         if (raw) {
            const c = JSON.parse(raw);
@@ -141,20 +139,16 @@
   }
 
   // =========================================================
-  // UI Logic
+  // UI & Animation Logic
   // =========================================================
   const ExpertCardSystem = {
-    LEVELS: {
-      "社區人氣王": { icon: "fa-fire", title: "【社區人氣王】", mark: "HOT" },
-      "社區專家": { icon: "fa-trophy", title: "【社區專家】", mark: "PRO+" },
-      "社區大師": { icon: "fa-crown", title: "【社區大師】", mark: "MASTER" }
-    },
+    // ... Levels & Helpers (保持不變) ...
+    LEVELS: { "社區人氣王": { icon: "fa-fire", title: "【社區人氣王】", mark: "HOT" }, "社區專家": { icon: "fa-trophy", title: "【社區專家】", mark: "PRO+" }, "社區大師": { icon: "fa-crown", title: "【社區大師】", mark: "MASTER" } },
     getTaiwanTime() { try { const now = new Date(); const utc = now.getTime() + (now.getTimezoneOffset() * 60000); return new Date(utc + (8 * 3600000)); } catch (error) { return new Date(); } },
     isInTimeRange(start, end) { try { const parseTW = (val) => { if (!val) return null; if (val instanceof Date) return isNaN(val.getTime()) ? null : val; let s = String(val).trim().replace(/\//g, '-').replace(' ', 'T'); if (/^\d{4}-\d{2}-\d{2}$/.test(s)) s += 'T00:00:00'; if (!/[zZ]|[+\-]\d{2}:\d{2}$/.test(s)) s += '+08:00'; const d = new Date(s); return isNaN(d.getTime()) ? null : d; }; const now = this.getTaiwanTime(); const s = parseTW(start); const e = parseTW(end); if (s && e) return now >= s && now <= e; if (s && !e) return now >= s; if (!s && e) return now <= e; return true; } catch (e) { return true; } },
     escapeHtml(str) { if (!str) return ''; const div = document.createElement('div'); div.textContent = str; return div.innerHTML; },
     sanitizeTel(raw) { return raw ? String(raw).replace(/[^\d+]/g, '') : ''; },
     sanitizeHref(raw, allowLine = false) { if (!raw) return ''; const s = String(raw).trim(); if (/^https?:\/\//i.test(s)) return s; if (/^tel:/i.test(s)) return s; if (allowLine && /^https?:\/\/(line\.me|lin\.ee)\//i.test(s)) return s; return ''; },
-    
     generateCardHTML(opt) {
        const lvl = this.LEVELS[opt.level];
        if (!lvl) return '';
@@ -181,7 +175,6 @@
          </div>
        </div>`;
     },
-
     injectFont() {
       if (!document.querySelector('link[href*="Shrikhand"]')) {
         const fontLink = document.createElement('link');
@@ -191,31 +184,50 @@
       }
     },
 
+    // ✅ 新增：視窗偵測函式 (IntersectionObserver)
+    observeVisibility(element) {
+        if (!('IntersectionObserver' in window)) {
+            // 舊瀏覽器相容：直接顯示
+            element.classList.remove('expert-card-hidden');
+            element.classList.add('expert-card-visible');
+            return;
+        }
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    // 進入畫面了！播放動畫
+                    element.classList.remove('expert-card-hidden');
+                    element.classList.add('expert-card-visible');
+                    observer.unobserve(element); // 播過一次就解除偵測
+                }
+            });
+        }, { threshold: 0.1 }); // 看到 10% 就觸發
+
+        observer.observe(element);
+    },
+
     run(data) {
        const container = document.getElementById('expert-container');
        if (!container || !container.dataset.caseName) return;
        const caseName = container.dataset.caseName;
        
        const matchingExperts = data.filter(e => e.case_name === caseName && this.isInTimeRange(e.start, e.end));
-       
-       if (matchingExperts.length === 0) {
-         return; 
-       }
+       if (matchingExperts.length === 0) return; 
 
        const selected = matchingExperts[Math.floor(Math.random() * matchingExperts.length)];
        container.innerHTML = this.generateCardHTML(selected);
        
-       // UI: 顯示 (先讓外框出來，再讓裡面的卡片浮出來)
+       // UI 顯示邏輯 (修正版)
        requestAnimationFrame(() => {
-          container.classList.add('loaded'); // 外框瞬間出現 (無動畫)
+          // 1. 先讓外框出現 (不帶動畫)
+          container.classList.add('loaded');
           
           const card = container.querySelector('.expert-card-wrapper');
           if(card) {
-             // 稍微延遲一下下，確保外框已經 display: block 了，卡片才開始跑動畫
-             setTimeout(() => {
-                card.classList.remove('expert-card-hidden');
-                card.classList.add('expert-card-visible');
-             }, 50);
+             // 2. 不要馬上顯示，而是交給「視窗偵測器」
+             // 這樣就算資料秒載，只要您還沒滑到，它就會保持透明
+             this.observeVisibility(card);
           }
        });
        this.injectFont();
@@ -234,7 +246,6 @@
   // Main Entry
   // =========================================================
   async function init() {
-    // 1. Zero CLS 初始化
     const container = document.getElementById('expert-container');
     if (container) container.classList.add('expert-container-v4');
 
