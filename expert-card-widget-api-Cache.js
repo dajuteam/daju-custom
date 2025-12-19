@@ -6,7 +6,7 @@
   'use strict';
 
   const CONFIG = {
-    API_URL: "https://script.google.com/macros/s/AKfycbz-sDaYGPoWDdx2_TrVxrVSIT1i0qVBvTSKiNebeARGRvwsLcXUUeSbMXSiomWNcl9Q/exec",
+    API_URL: "https://daju-expert-card-api.dajuteam88.workers.dev",
     CACHE_KEY: 'daju_expert_v4_store',
     TTL: 15 * 60 * 1000,     // 15分鐘
     FETCH_TIMEOUT_MS: 8000   // 8秒熔斷
