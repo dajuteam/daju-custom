@@ -1,4 +1,5 @@
 /**
+ * 大橘廣告管理系統-GAS GOOGLE請求版 (V4.1 - Toggle Version)
  * Daju Ad Management System (V4.1 - Toggle Version)
  * 核心：全域 UI 開關、零 CLS 跳動、智慧快取
  */
