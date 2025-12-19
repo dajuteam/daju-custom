@@ -6,7 +6,8 @@
 // ==========================================
 //  0) 全域設定與開關
 // ==========================================
-const ADS_GAS_URL = "https://script.google.com/macros/s/AKfycbzvA6Q69iJK4BCBmyhv2BLNClxqJw3Fk6i3KZqQwU5BSda1Ls4BSoFQDyC8ikL12HRJ/exec";
+const ADS_GAS_URL = "https://daju-ads-injector-api.dajuteam88.workers.dev";
+//const ADS_GAS_URL = "https://script.google.com/macros/s/AKfycbzvA6Q69iJK4BCBmyhv2BLNClxqJw3Fk6i3KZqQwU5BSda1Ls4BSoFQDyC8ikL12HRJ/exec";
 const LOCAL_CACHE_KEY = "daju_ads_cache";
 const LOCAL_CACHE_EXPIRY_MS = 15 * 60 * 1000; 
 
