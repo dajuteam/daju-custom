@@ -1,317 +1,335 @@
 /**
- * Project: Gold Agent Card System (V4.9.3 - Final Fix)
- * Fixes:
- * 1. Data Key Mismatch (start/end vs start_date/end_date)
- * 2. Missing Font Injection (Shrikhand)
- * 3. 3-Key Architecture (Standardized)
+  *金牌經紀人卡片系統 V4.9 (Unified Probe Edition)
+ * Expert Card Widget V4.9 (Unified Probe Edition)
+ * ✅ Data Engine aligned with Ads System:
+ * - 15min probe interval (0 request within interval)
+ * - after interval: 1 probe request with v=version
+ * - 304 => renew timestamp, 200 => update cache
+ * ✅ Emergency refresh: URL ?refresh
+ * - JS adds refresh=1 to worker
+ * - Worker bypasses edge cache
+ * ✅ UI/CSS kept as-is (Zero CLS + IntersectionObserver animation)
  */
-
 (function (window, document) {
   'use strict';
 
   // =========================================================
-  // 0. Config & KEYS
+  // 0) Config (Aligned with Ads System)
   // =========================================================
-  const CONFIG = {
-    API_URL: "https://daju-expert-card-api.dajuteam88.workers.dev",
-    PROBE_INTERVAL_MS: 15 * 60 * 1000,   // 15 分鐘
-    FETCH_TIMEOUT_MS: 8000,              // 8 秒熔斷
-    META_FAIL_COOLDOWN_MS: 60 * 1000,    // 失敗冷卻
-    FORCE_REFRESH_PARAM: "refresh"
-  };
-
-  // ✅ 採用高效能三鍵分離
-  const KEYS = {
-    STORAGE: "daju_expert_cache",       // 存 { version, data }
-    LAST_PROBE: "daju_expert_probe",    // 存 timestamp
-    META_FAIL: "daju_expert_fail"       // 存 timestamp
-  };
+  const API_URL = "https://daju-expert-card-api.dajuteam88.workers.dev"; // ✅ 固定走 Worker
+  const LOCAL_CACHE_KEY = "daju_expert_cache";    // ✅ 統一命名風格
+  const LOCAL_CACHE_EXPIRY_MS = 15 * 60 * 1000;   // ✅ 15 分鐘探針
+  const FETCH_TIMEOUT_MS = 8000;                  // ✅ 8 秒熔斷
 
   // =========================================================
-  // 1. CSS Styles (Auto Height + Gold Effects)
+  // 1) CSS (Zero CLS + Animation)
   // =========================================================
   const WIDGET_CSS = `
-    /* Container Base */
-    .expert-container-v4 { display: none; width: 100%; max-width: 1000px; margin: 20px auto; } 
+    /* Zero CLS: 容器預設隱藏 */
+    .expert-container-v4 { display: none; } 
     .expert-container-v4.loaded { display: block; } 
 
-    /* Animation */
-    .expert-card-hidden { opacity: 0; visibility: hidden; transform: translateY(30px); pointer-events: none; }
+    /* 初始狀態：隱藏且下沉 */
+    .expert-card-hidden { 
+        opacity: 0 !important; 
+        visibility: hidden !important; 
+        transform: translateY(30px) !important; 
+        will-change: transform, opacity; 
+        pointer-events: none !important; 
+    }
+    
+    /* 觸發狀態：浮出動畫 */
     .expert-card-visible { 
-      visibility: visible; opacity: 1; transform: translateY(0); 
-      transition: opacity 0.6s ease-out, transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        visibility: visible !important; 
+        animation: expertFadeMoveUp 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; 
+    }
+    
+    @keyframes expertFadeMoveUp { 
+        0% { opacity: 0; transform: translateY(30px); } 
+        100% { opacity: 1; transform: translateY(0); } 
     }
 
-    /* Card Design */
-    .expert-card-wrapper { position: relative; border-radius: 12px; overflow: hidden; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.08); isolation: isolate; background: #fff; }
-    .expert-card-wrapper::before { content: ""; position: absolute; top: -3px; left: -3px; right: -3px; bottom: -3px; border-radius: inherit; background: linear-gradient(130deg, #fffaea, #eccb7d, #fff2d4, #f4c978, #ffedb1, #e6c079, #e7c57c); background-size: 300% 300%; animation: borderFlow 8s linear infinite; z-index: -2; pointer-events: none; }
+    /* 以下為卡片視覺樣式 (保留原設計) */
+    .expert-card-wrapper { position: relative; border-radius: 8px; overflow: hidden; width: 100%; max-width: 1000px; z-index: 0; line-height: 1.5; letter-spacing: 0; margin: 20px 0; isolation: isolate; }
+    .expert-card-wrapper::before { content: ""; position: absolute; top: -3px; left: -3px; right: -3px; bottom: -3px; border-radius: inherit; background: linear-gradient(130deg, #fffaea, #eccb7d, #fff2d4, #f4c978, #ffedb1, #e6c079, #e7c57c); background-size: 400% 400%; animation: borderFlow 10s linear infinite; z-index: -2; box-shadow: 0 0 16px rgba(4, 255, 0, 0.715); pointer-events: none; }
     @keyframes borderFlow { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-
-    .expert-card { padding: 15px 20px; display: flex; align-items: center; flex-wrap: wrap; background: #fff; border-radius: 10px; position: relative; }
-    .expert-badge { display: none; } 
+    .expert-card { border-radius: 8px; padding: 10px 22px; position: relative; display: flex; align-items: center; flex-wrap: wrap; }
+    .expert-badge { display: none; }
+    .expert-card .expert-badge { background: radial-gradient(circle, #f5d770, #d1a106); }
     .expert-badge i { color: #fff; font-size: 1.8em; }
-    .expert-profile { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #fff; object-fit: cover; margin-right: 15px; box-shadow: 0 4px 10px rgba(194, 145, 67, 0.3); background-color: #f0f0f0; flex-shrink: 0; }
-    .expert-info { flex: 1; min-width: 0; }
-    .expert-title { font-size: 1rem; font-weight: 700; color: #9f5f00; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
-    .expert-title i { color: #d1a106; }
-    .expert-name-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 8px; }
-    .expert-name { font-size: 1.5rem; font-weight: bold; color: #333; line-height: 1.2; }
-    .expert-contact { display: flex; gap: 10px; }
-    .expert-contact a { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 12px; border-radius: 18px; text-decoration: none; color: #fff; font-size: 0.9rem; transition: transform 0.2s, filter 0.2s; font-weight: 500; }
-    .expert-contact a:hover { transform: translateY(-2px); filter: brightness(1.1); }
+    @keyframes rotateBadge { 0% { transform: rotateY(0deg); } 100% { transform: rotateY(360deg); } }
+    .expert-profile { width: 80px !important; height: 80px !important; border-radius: 12px; border: 3px solid #fff; object-fit: cover; margin-right: 15px !important; box-shadow: 0 2px 8px rgba(0, 0, 0, .1); display: block; aspect-ratio: 1/1; background-color: #f0f0f0; transform: translateZ(0); -webkit-transform: translateZ(0); }
+    .expert-info { flex: 1; }
+    .expert-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 6px; }
+    .expert-info .expert-title { color: #9f5f00; }
+    .expert-name-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 10px; position: relative; z-index: 10; }
+    .expert-name { font-size: 1.7rem; font-weight: bold; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .expert-contact-phone { background: linear-gradient(to right, #a45500, #ff9e36); }
     .expert-contact-line { background: linear-gradient(to right, #00a816, #67ca04); }
-    .expert-contact a i { margin-right: 6px; }
-    .expert-footer { font-size: 0.75rem; color: #af885c; opacity: 0.8; }
-    /* Shrikhand Font Apply */
-    .expert-level-mark { position: absolute; right: 10px; top: 5px; font-family: "Shrikhand", serif; font-weight: 900; font-style: italic; font-size: 1.5rem; color: rgba(194, 145, 67, 0.15); pointer-events: none; user-select: none; z-index: 0; }
-
-    @media (min-width: 768px) {
-      .expert-card { padding: 25px 35px; }
-      .expert-profile { width: 110px; height: 110px; margin-right: 25px; border-width: 4px; }
-      .expert-title { font-size: 1.1rem; }
-      .expert-name { font-size: 2rem; }
-      .expert-contact a { height: 42px; padding: 0 20px; font-size: 1rem; }
-      .expert-level-mark { font-size: 4rem; right: 20px; top: 20px; }
-      .expert-footer { font-size: 0.85rem; }
-      .expert-badge { width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(45deg, #f5d770, #d1a106); display: flex; align-items: center; justify-content: center; margin-right: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
-    }
+    .expert-contact { display: flex; gap: 15px; flex-wrap: wrap; }
+    .expert-contact a { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; min-width: 40px; min-height: 40px; border-radius: 50%; padding: 0; font-size: 1.4rem; line-height: 1; text-decoration: none; transition: transform .2s ease, filter .2s ease, box-shadow .2s ease; outline: none; color: #fff; }
+    .expert-contact a:hover { transform: translateY(-1px); filter: brightness(1.05); }
+    .expert-contact a:active { transform: translateY(0); filter: brightness(.98); }
+    .expert-contact a:focus-visible { box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 0 0 6px rgba(164, 85, 0, .35); }
+    .expert-contact a i.fa-phone-alt { font-size: 1.3rem; }
+    .expert-contact a i.fa-line { font-size: 1.5rem; }
+    .expert-name-row .expert-contact a { color: #fff; }
+    .expert-footer { display: none; position: relative; z-index: 3; font-size: .5rem; color: #af885c; }
+    .expert-level-mark { position: absolute; right: 18px; top: 10px; font-family: "Shrikhand", serif; font-style: italic; font-size: 1.1rem; color: rgba(194, 145, 67, 0.5); opacity: 0; animation: fadeSlideIn .8s ease-out forwards; animation-delay: 1s; pointer-events: none; z-index: 2; text-shadow: 0 1px 1px rgba(255, 255, 255, .4); }
+    @keyframes fadeSlideIn { 0% { transform: translate(0, 20px); opacity: 0; } 100% { transform: translate(0, 0); opacity: .9; } }
+    .expert-contact a span { display: none; }
+    .expert-title i { animation: rotateBadge 3s linear infinite; }
+    @media (min-width:414px) { .expert-level-mark { font-size: 1.6rem; right: 10px; top: 6px; } }
+    @media screen and (min-width:992px) { .expert-card-wrapper { border-radius: 15px; } .expert-card { border-radius: 15px; padding: 15px 28px; } .expert-title { font-size: 1.7rem; } .expert-title i { animation: none; } .expert-contact a { width: auto; height: auto; min-height: 44px; font-size: 1.4rem; padding: 8px 16px; gap: 8px; border-radius: 10px; letter-spacing: 1.1px; } .expert-contact a span { display: inline; } .expert-badge { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 25px; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, .2); animation: rotateBadge 3s linear infinite; } .expert-profile { width: 120px !important; height: 120px !important; border-radius: 12px; border: 4px solid #fff; margin-right: 30px !important; box-shadow: 0 2px 5px #dcad6ccc; } .expert-name { font-size: 2.3rem; max-width: 40ch; } .expert-level-mark { right: -20px; top: 34px; font-size: 6.5rem; } .expert-footer { font-size: .85rem; } }
+    @media (prefers-reduced-motion: reduce) { .expert-title i, .expert-badge, .expert-level-mark, .expert-card-visible { animation: none !important; transition: none !important; opacity: 1 !important; transform: none !important; } }
   `;
 
   // =========================================================
-  // 2. Helper Functions
+  // 2) localStorage helpers (Aligned)
   // =========================================================
-  function injectStyles() {
-    if (document.getElementById('daju-expert-css-v493')) return;
-    const style = document.createElement('style');
-    style.id = 'daju-expert-css-v493';
-    style.innerHTML = WIDGET_CSS;
-    document.head.appendChild(style);
+  function readCache() {
+    try { return JSON.parse(localStorage.getItem(LOCAL_CACHE_KEY) || "null"); } catch { return null; }
+  }
+  function writeCache(obj) {
+    try { localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(obj)); } catch {}
   }
 
-  // ✅ 補回字體注入，確保浮水印顯示正確
-  function injectFont() {
-    if (!document.querySelector('link[href*="Shrikhand"]')) {
-      const fontLink = document.createElement('link');
-      fontLink.rel = 'stylesheet';
-      fontLink.href = 'https://fonts.googleapis.com/css2?family=Shrikhand&display=swap';
-      document.head.appendChild(fontLink);
+  // =========================================================
+  // 3) URL refresh flag (Aligned)
+  // =========================================================
+  function isForceRefresh() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.has("refresh");
+    } catch {
+      return false;
     }
   }
 
-  function safeJSONParse(str, fallback) {
-    try { return JSON.parse(str); } catch (e) { return fallback; }
-  }
-
-  function safeSetItem(key, val) {
-    try { localStorage.setItem(key, val); } catch (e) { console.warn("Storage Full"); }
-  }
-
-  function getTaiwanTime() {
-    try {
-      const now = new Date();
-      const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-      return new Date(utc + (3600000 * 8));
-    } catch { return new Date(); }
-  }
-
   // =========================================================
-  // 3. Unified Data Engine (3-Key Implementation)
+  // 4) fetch JSON with timeout (Aligned)
   // =========================================================
-  async function fetchJSON(url, { timeoutMs, cacheMode }) {
+  async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
     const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(url, { signal: controller.signal, cache: cacheMode || "no-cache" });
-      let data = null;
-      try { data = await res.json(); } catch {}
-      return { ok: res.ok, status: res.status, data };
-    } catch (e) {
-      return { ok: false, error: e };
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      return await res.json();
     } finally {
-      clearTimeout(id);
+      clearTimeout(timer);
     }
   }
 
-  async function unifiedDataEngine() {
-    const now = Date.now();
-    
-    // 1. Read Keys
-    const lastProbe = parseInt(localStorage.getItem(KEYS.LAST_PROBE) || "0", 10);
-    const lastFail = parseInt(localStorage.getItem(KEYS.META_FAIL) || "0", 10);
-    const cachedStr = localStorage.getItem(KEYS.STORAGE);
-    const localCache = safeJSONParse(cachedStr, {}); 
-    
-    const params = new URLSearchParams(window.location.search);
-    const isForce = params.has(CONFIG.FORCE_REFRESH_PARAM);
+  // =========================================================
+  // 5) One request builder (Aligned)
+  // =========================================================
+  async function fetchExpertByClientVersion(cachedVersion, bypassCache = false) {
+    const hasV = cachedVersion != null && String(cachedVersion).trim() !== "";
+    const baseUrl = hasV
+      ? `${API_URL}?v=${encodeURIComponent(String(cachedVersion))}`
+      : `${API_URL}`;
 
-    // 2. Local TTL Check (15 mins)
-    if (!isForce && localCache.data && (now - lastProbe < CONFIG.PROBE_INTERVAL_MS)) {
-      return localCache.data;
+    const url = bypassCache
+      ? (baseUrl + (baseUrl.includes("?") ? "&" : "?") + "refresh=1")
+      : baseUrl;
+
+    // ✅ bypass 用 reload (強制請求)，一般 probe 用 no-store (避免瀏覽器干擾)
+    const fetchOptions = bypassCache ? { cache: "reload" } : { cache: "no-store" };
+    return await fetchJSON(url, fetchOptions);
+  }
+
+  // =========================================================
+  // 6) Smart cache logic (Aligned with Ads)
+  // =========================================================
+  async function getExpertSmart(forceRefresh) {
+    const cached = readCache();
+
+    // (A) First load OR force: 1 request (no v)
+    if (!cached || forceRefresh) {
+      try {
+        const full = await fetchExpertByClientVersion("", forceRefresh);
+        if (full && full.code === 200 && full.data) {
+          writeCache({ version: String(full.version || "0"), data: full.data, timestamp: Date.now() });
+          return full.data;
+        }
+      } catch (e) {
+        console.warn("[Expert] Load failed, fallback.");
+      }
+      return cached ? cached.data : null;
     }
 
-    // 3. Error Cooldown (60s)
-    if (!isForce && (now - lastFail < CONFIG.META_FAIL_COOLDOWN_MS)) {
-      return localCache.data || [];
+    // (B) Within interval: 0 request
+    if (Date.now() - cached.timestamp < LOCAL_CACHE_EXPIRY_MS) {
+      return cached.data;
     }
 
-    // 4. Network Probe
+    // (C) After interval: 1 probe request (with v)
     try {
-      const v = (localCache.version && !isForce) ? localCache.version : "0";
-      let url = `${CONFIG.API_URL}?v=${encodeURIComponent(v)}`;
-      if (isForce) url += "&refresh=1";
+      const check = await fetchExpertByClientVersion(cached.version, false);
 
-      const res = await fetchJSON(url, {
-        timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
-        cacheMode: isForce ? "reload" : "no-store"
-      });
-
-      // 304 Not Modified
-      if (res.status === 304 || (res.data && res.data.code === 304)) {
-        safeSetItem(KEYS.LAST_PROBE, String(now));
-        safeSetItem(KEYS.META_FAIL, "0");
-        return localCache.data || [];
+      // 304 => renew timestamp
+      if (check && (check.code === 304 || check.notModified)) {
+        writeCache({ ...cached, timestamp: Date.now() });
+        return cached.data;
       }
 
-      // 200 OK
-      if (res.data && res.data.code === 200 && Array.isArray(res.data.data)) {
-        const newCache = {
-          version: String(res.data.version),
-          data: res.data.data
-        };
-        safeSetItem(KEYS.STORAGE, JSON.stringify(newCache));
-        safeSetItem(KEYS.LAST_PROBE, String(now));
-        safeSetItem(KEYS.META_FAIL, "0");
-        return newCache.data;
+      // 200 => update cache
+      if (check && check.code === 200 && check.data) {
+        writeCache({ version: String(check.version || "0"), data: check.data, timestamp: Date.now() });
+        return check.data;
       }
 
-    } catch (e) {
-      console.warn("[Expert] Probe failed.");
-      safeSetItem(KEYS.META_FAIL, String(now));
+      return cached.data;
+    } catch (err) {
+      return cached.data;
     }
-
-    return localCache.data || [];
   }
 
   // =========================================================
-  // 4. Rendering & Animation
+  // 7) UI & Animation System (保留 V4.8 功能)
   // =========================================================
-  const LEVELS = {
-    "社區人氣王": { icon: "fa-fire", title: "【社區人氣王】", mark: "HOT" },
-    "社區專家": { icon: "fa-trophy", title: "【社區專家】", mark: "PRO+" },
-    "社區大師": { icon: "fa-crown", title: "【社區大師】", mark: "MASTER" }
-  };
+  const ExpertCardSystem = {
+    LEVELS: {
+      "社區人氣王": { icon: "fa-fire", title: "【社區人氣王】", mark: "HOT" },
+      "社區專家": { icon: "fa-trophy", title: "【社區專家】", mark: "PRO+" },
+      "社區大師": { icon: "fa-crown", title: "【社區大師】", mark: "MASTER" }
+    },
+    getTaiwanTime() {
+      try {
+        const now = new Date();
+        const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+        return new Date(utc + (8 * 3600000));
+      } catch (error) { return new Date(); }
+    },
+    isInTimeRange(start, end) {
+      try {
+        const parseTW = (val) => {
+          if (!val) return null;
+          if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+          let s = String(val).trim().replace(/\//g, '-').replace(' ', 'T');
+          if (/^\d{4}-\d{2}-\d{2}$/.test(s)) s += 'T00:00:00';
+          if (!/[zZ]|[+\-]\d{2}:\d{2}$/.test(s)) s += '+08:00';
+          const d = new Date(s);
+          return isNaN(d.getTime()) ? null : d;
+        };
+        const now = this.getTaiwanTime();
+        const s = parseTW(start);
+        const e = parseTW(end);
+        if (s && e) return now >= s && now <= e;
+        if (s && !e) return now >= s;
+        if (!s && e) return now <= e;
+        return true;
+      } catch (e) { return true; }
+    },
+    escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    },
+    sanitizeTel(raw) { return raw ? String(raw).replace(/[^\d+]/g, '') : ''; },
+    sanitizeHref(raw, allowLine = false) {
+      if (!raw) return '';
+      const s = String(raw).trim();
+      if (/^https?:\/\//i.test(s)) return s;
+      if (/^tel:/i.test(s)) return s;
+      if (allowLine && /^https?:\/\/(line\.me|lin\.ee)\//i.test(s)) return s;
+      return '';
+    },
+    generateCardHTML(opt) {
+      const lvl = this.LEVELS[opt.level];
+      if (!lvl) return '';
+      const imageSrc = this.escapeHtml(opt.image);
+      const telClean = this.sanitizeTel(opt.phone);
+      const telHref = telClean ? `tel:${telClean}` : '';
+      const lineHref = this.sanitizeHref(opt.line, true);
 
-  // ✅ [FIX] 支援舊版資料格式的 start / end
-  function isInTimeRange(start, end) {
-    const parseTW = (val) => {
-      if (!val) return null;
-      if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
-      // 兼容 "2023/12/01" 或 "2023-12-01"
-      let s = String(val).trim().replace(/\//g, '-').replace(' ', 'T');
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) s += 'T00:00:00';
-      if (!/[zZ]|[+\-]\d{2}:\d{2}$/.test(s)) s += '+08:00';
-      const d = new Date(s);
-      return isNaN(d.getTime()) ? null : d;
-    };
-
-    const now = getTaiwanTime();
-    const s = parseTW(start);
-    const e = parseTW(end);
-    
-    if (s && e) return now >= s && now <= e;
-    if (s && !e) return now >= s;
-    if (!s && e) return now <= e;
-    return true;
-  }
-
-  function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]);
-  }
-
-  function renderCard(container, experts) {
-    const caseName = (container.dataset.caseName || "").trim();
-    if (!caseName) return;
-
-    // ✅ [FIX] 這裡改回使用 start / end，這就是資料出不來的關鍵！
-    const validExperts = experts.filter(e => 
-      e.case_name === caseName && isInTimeRange(e.start, e.end)
-    );
-    
-    if (validExperts.length === 0) return;
-    const item = validExperts[Math.floor(Math.random() * validExperts.length)];
-    
-    const lvl = LEVELS[item.level] || LEVELS["社區專家"];
-    const tel = (item.phone || "").replace(/[^\d+]/g, '');
-    const line = item.line || "";
-
-    const html = `
-      <div class="expert-card-wrapper expert-card-hidden">
-        <div class="expert-card">
+      return `<div class="expert-card-wrapper expert-platinum expert-card-hidden">
+        <div class="expert-card expert-platinum">
           <div class="expert-badge"><i class="fas ${lvl.icon}"></i></div>
-          <img class="expert-profile" src="${escapeHtml(item.image)}" alt="${escapeHtml(item.name)}">
+          <img alt="頭像" class="expert-profile" src="${imageSrc}" loading="eager" referrerpolicy="no-referrer" width="120" height="120" />
           <div class="expert-info">
             <div class="expert-title"><i class="fas ${lvl.icon}"></i>${lvl.title}</div>
             <div class="expert-name-row">
-              <div class="expert-name">${escapeHtml(item.name)}</div>
+              <div class="expert-name">${this.escapeHtml(opt.name)}</div>
               <div class="expert-contact">
-                ${tel ? `<a href="tel:${tel}" class="expert-contact-phone"><i class="fas fa-phone-alt"></i>撥打電話</a>` : ''}
-                ${line ? `<a href="${escapeHtml(line)}" target="_blank" class="expert-contact-line"><i class="fab fa-line"></i>加 LINE</a>` : ''}
+                ${telHref ? `<a class="expert-contact-phone" href="${telHref}"><i class="fas fa-phone-alt"></i><span>${this.escapeHtml(opt.phone)}</span></a>` : ''}
+                ${lineHref ? `<a class="expert-contact-line" href="${lineHref}" target="_blank" rel="noopener noreferrer"><i class="fab fa-line"></i><span>LINE</span></a>` : ''}
               </div>
             </div>
-            <div class="expert-footer">證號：${escapeHtml(item.license)} ｜ ${escapeHtml(item.company)}</div>
-            <div class="expert-level-mark">${lvl.mark}</div>
+            <div class="expert-footer">證號：${this.escapeHtml(opt.license || '')}｜經紀業：${this.escapeHtml(opt.company || '')}</div>
+            <div class="expert-level-mark">${lvl.mark}&nbsp;</div>
           </div>
         </div>
-      </div>
-    `;
-    
-    container.innerHTML = html;
-    container.classList.add("loaded"); 
-
-    const wrapper = container.querySelector(".expert-card-wrapper");
-    if ('IntersectionObserver' in window) {
-      const obs = new IntersectionObserver((entries) => {
+      </div>`;
+    },
+    injectFont() {
+      if (!document.querySelector('link[href*="Shrikhand"]')) {
+        const fontLink = document.createElement('link');
+        fontLink.rel = 'stylesheet';
+        fontLink.href = 'https://fonts.googleapis.com/css2?family=Shrikhand&display=swap';
+        document.head.appendChild(fontLink);
+      }
+    },
+    observeVisibility(element) {
+      if (!('IntersectionObserver' in window)) {
+        element.classList.remove('expert-card-hidden');
+        element.classList.add('expert-card-visible');
+        return;
+      }
+      const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
-            wrapper.classList.remove('expert-card-hidden');
-            wrapper.classList.add('expert-card-visible');
-            obs.disconnect();
+            element.classList.remove('expert-card-hidden');
+            element.classList.add('expert-card-visible');
+            observer.unobserve(element);
           }
         });
       }, { threshold: 0.1 });
-      obs.observe(wrapper);
-    } else {
-      wrapper.classList.remove('expert-card-hidden');
-      wrapper.classList.add('expert-card-visible');
+      observer.observe(element);
+    },
+    run(data) {
+      const container = document.getElementById('expert-container');
+      if (!container || !container.dataset.caseName) return;
+
+      const caseName = container.dataset.caseName;
+      const matchingExperts = data.filter(e => e.case_name === caseName && this.isInTimeRange(e.start, e.end));
+
+      if (matchingExperts.length === 0) return;
+
+      const selected = matchingExperts[Math.floor(Math.random() * matchingExperts.length)];
+      container.innerHTML = this.generateCardHTML(selected);
+
+      requestAnimationFrame(() => {
+        container.classList.add('loaded');
+        const card = container.querySelector('.expert-card-wrapper');
+        if (card) this.observeVisibility(card);
+      });
+
+      this.injectFont();
     }
+  };
+
+  function injectStyles() {
+    if (document.getElementById('daju-expert-css-v4')) return;
+    const style = document.createElement('style');
+    style.id = 'daju-expert-css-v4';
+    style.textContent = WIDGET_CSS;
+    document.head.appendChild(style);
   }
 
   // =========================================================
-  // 5. Init
+  // 8) Main (Aligned entry)
   // =========================================================
   async function init() {
-    const containers = document.querySelectorAll("#expert-container");
-    if (containers.length === 0) return;
-
-    if (!document.querySelector('link[href*="fontawesome"]')) {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css';
-      document.head.appendChild(link);
-    }
+    const container = document.getElementById('expert-container');
+    if (container) container.classList.add('expert-container-v4');
 
     injectStyles();
-    injectFont(); // ✅ 確保注入字體
 
-    containers.forEach(c => c.classList.add('expert-container-v4'));
-
-    const data = await unifiedDataEngine();
-    
-    if (Array.isArray(data) && data.length > 0) {
-      containers.forEach(c => renderCard(c, data));
-    }
+    const forceRefresh = isForceRefresh();
+    const data = await getExpertSmart(forceRefresh);
+    if (data) ExpertCardSystem.run(data);
   }
 
   if (document.readyState === 'loading') {
