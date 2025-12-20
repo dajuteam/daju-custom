@@ -1,4 +1,5 @@
 /**
+  *金牌經紀人卡片系統 V4.9 (Unified Probe Edition)
  * Expert Card Widget V4.9 (Unified Probe Edition)
  * ✅ Data Engine aligned with Ads System:
  * - 15min probe interval (0 request within interval)
