@@ -1,34 +1,34 @@
 /**
-  *金牌經紀人卡片系統 V4.9 (Unified Probe Edition)
- * Expert Card Widget V4.9 (Unified Probe Edition)
- * ✅ Data Engine aligned with Ads System:
- * - 15min probe interval (0 request within interval)
- * - after interval: 1 probe request with v=version
- * - 304 => renew timestamp, 200 => update cache
- * ✅ Emergency refresh: URL ?refresh
- * - JS adds refresh=1 to worker
- * - Worker bypasses edge cache
- * ✅ UI/CSS kept as-is (Zero CLS + IntersectionObserver animation)
+ * Expert Card Widget V4.9.1 (Stable A-Rule + Safe Fetch)
+ * ✅ Whitepaper aligned:
+ * - 15min local TTL => 0 request
+ * - after TTL => 1 probe request with ?v=version
+ * - 304 => renew timestamp only
+ * - 200 => update cache
+ * - refresh => add refresh=1 + cache:reload
+ * ✅ A Rule (Hard):
+ * - no version => FULL (NO ?v)
+ * - has version => PROBE (WITH ?v)
  */
+
 (function (window, document) {
   'use strict';
 
   // =========================================================
-  // 0) Config (Aligned with Ads System)
+  // 0) Config
   // =========================================================
-  const API_URL = "https://daju-expert-card-api.dajuteam88.workers.dev"; // ✅ 固定走 Worker
-  const LOCAL_CACHE_KEY = "daju_expert_cache";    // ✅ 統一命名風格
-  const LOCAL_CACHE_EXPIRY_MS = 15 * 60 * 1000;   // ✅ 15 分鐘探針
-  const FETCH_TIMEOUT_MS = 8000;                  // ✅ 8 秒熔斷
+  const API_URL = "https://daju-expert-card-api.dajuteam88.workers.dev";
+  const LOCAL_CACHE_KEY = "daju_expert_cache";
+  const LOCAL_CACHE_EXPIRY_MS = 15 * 60 * 1000;
+  const FETCH_TIMEOUT_MS = 8000;
 
   // =========================================================
-  // 1) CSS (Zero CLS + Animation)
+  // 1) CSS (原樣保留)
   // =========================================================
-  const WIDGET_CSS = `
+  const WIDGET_CSS = `/*（你的 CSS 原封不動）*/` + `
     /* Zero CLS: 容器預設隱藏 */
     .expert-container-v4 { display: none; } 
     .expert-container-v4.loaded { display: block; } 
-
     /* 初始狀態：隱藏且下沉 */
     .expert-card-hidden { 
         opacity: 0 !important; 
@@ -37,18 +37,14 @@
         will-change: transform, opacity; 
         pointer-events: none !important; 
     }
-    
-    /* 觸發狀態：浮出動畫 */
     .expert-card-visible { 
         visibility: visible !important; 
         animation: expertFadeMoveUp 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; 
     }
-    
     @keyframes expertFadeMoveUp { 
         0% { opacity: 0; transform: translateY(30px); } 
         100% { opacity: 1; transform: translateY(0); } 
     }
-
     /* 以下為卡片視覺樣式 (保留原設計) */
     .expert-card-wrapper { position: relative; border-radius: 8px; overflow: hidden; width: 100%; max-width: 1000px; z-index: 0; line-height: 1.5; letter-spacing: 0; margin: 20px 0; isolation: isolate; }
     .expert-card-wrapper::before { content: ""; position: absolute; top: -3px; left: -3px; right: -3px; bottom: -3px; border-radius: inherit; background: linear-gradient(130deg, #fffaea, #eccb7d, #fff2d4, #f4c978, #ffedb1, #e6c079, #e7c57c); background-size: 400% 400%; animation: borderFlow 10s linear infinite; z-index: -2; box-shadow: 0 0 16px rgba(4, 255, 0, 0.715); pointer-events: none; }
@@ -85,7 +81,7 @@
   `;
 
   // =========================================================
-  // 2) localStorage helpers (Aligned)
+  // 2) Storage helpers
   // =========================================================
   function readCache() {
     try { return JSON.parse(localStorage.getItem(LOCAL_CACHE_KEY) || "null"); } catch { return null; }
@@ -95,7 +91,7 @@
   }
 
   // =========================================================
-  // 3) URL refresh flag (Aligned)
+  // 3) refresh flag
   // =========================================================
   function isForceRefresh() {
     try {
@@ -107,86 +103,88 @@
   }
 
   // =========================================================
-  // 4) fetch JSON with timeout (Aligned)
+  // 4) Safe fetch JSON (防 HTML/502)
   // =========================================================
-  async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+  async function fetchJSON(url, { cacheMode }, timeoutMs = FETCH_TIMEOUT_MS) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      return await res.json();
+      const res = await fetch(url, { cache: cacheMode || "no-cache", signal: controller.signal });
+      let data = null;
+      try { data = await res.json(); } catch { data = null; }
+      return { ok: res.ok, status: res.status, data };
     } finally {
       clearTimeout(timer);
     }
   }
 
   // =========================================================
-  // 5) One request builder (Aligned)
+  // 5) Request builder (A Rule - HARD)
   // =========================================================
-  async function fetchExpertByClientVersion(cachedVersion, bypassCache = false) {
-    const hasV = cachedVersion != null && String(cachedVersion).trim() !== "";
-    const baseUrl = hasV
-      ? `${API_URL}?v=${encodeURIComponent(String(cachedVersion))}`
+  function buildUrl({ version, refresh }) {
+    // A Rule:
+    // - no version => FULL (no ?v)
+    // - has version => PROBE (with ?v)
+    let url = (version && String(version).trim() !== "")
+      ? `${API_URL}?v=${encodeURIComponent(String(version))}`
       : `${API_URL}`;
 
-    const url = bypassCache
-      ? (baseUrl + (baseUrl.includes("?") ? "&" : "?") + "refresh=1")
-      : baseUrl;
+    if (refresh) url += (url.includes("?") ? "&" : "?") + "refresh=1";
+    return url;
+  }
 
-    // ✅ bypass 用 reload (強制請求)，一般 probe 用 no-store (避免瀏覽器干擾)
-    const fetchOptions = bypassCache ? { cache: "reload" } : { cache: "no-store" };
-    return await fetchJSON(url, fetchOptions);
+  async function requestExpert({ version, refresh }) {
+    const url = buildUrl({ version, refresh });
+    const cacheMode = refresh ? "reload" : "no-cache";
+    return await fetchJSON(url, { cacheMode });
   }
 
   // =========================================================
-  // 6) Smart cache logic (Aligned with Ads)
+  // 6) Smart cache (Whitepaper)
   // =========================================================
   async function getExpertSmart(forceRefresh) {
+    const now = Date.now();
     const cached = readCache();
 
-    // (A) First load OR force: 1 request (no v)
+    // A) First load OR refresh => FULL (no v)
     if (!cached || forceRefresh) {
-      try {
-        const full = await fetchExpertByClientVersion("", forceRefresh);
-        if (full && full.code === 200 && full.data) {
-          writeCache({ version: String(full.version || "0"), data: full.data, timestamp: Date.now() });
-          return full.data;
-        }
-      } catch (e) {
-        console.warn("[Expert] Load failed, fallback.");
+      const r = await requestExpert({ version: "", refresh: !!forceRefresh }).catch(() => null);
+      const payload = r && r.data;
+
+      if (payload && payload.code === 200 && payload.data) {
+        writeCache({ version: String(payload.version || "0"), data: payload.data, timestamp: now });
+        return payload.data;
       }
       return cached ? cached.data : null;
     }
 
-    // (B) Within interval: 0 request
-    if (Date.now() - cached.timestamp < LOCAL_CACHE_EXPIRY_MS) {
+    // B) Within interval => 0 request
+    if (cached.timestamp && (now - cached.timestamp < LOCAL_CACHE_EXPIRY_MS)) {
       return cached.data;
     }
 
-    // (C) After interval: 1 probe request (with v)
-    try {
-      const check = await fetchExpertByClientVersion(cached.version, false);
+    // C) After interval => PROBE (with v)
+    const r = await requestExpert({ version: cached.version, refresh: false }).catch(() => null);
+    const payload = r && r.data;
 
-      // 304 => renew timestamp
-      if (check && (check.code === 304 || check.notModified)) {
-        writeCache({ ...cached, timestamp: Date.now() });
-        return cached.data;
-      }
-
-      // 200 => update cache
-      if (check && check.code === 200 && check.data) {
-        writeCache({ version: String(check.version || "0"), data: check.data, timestamp: Date.now() });
-        return check.data;
-      }
-
-      return cached.data;
-    } catch (err) {
+    // 304 => renew timestamp only
+    if (payload && payload.code === 304) {
+      writeCache({ ...cached, timestamp: now });
       return cached.data;
     }
+
+    // 200 => update
+    if (payload && payload.code === 200 && payload.data) {
+      writeCache({ version: String(payload.version || "0"), data: payload.data, timestamp: now });
+      return payload.data;
+    }
+
+    // fallback
+    return cached.data;
   }
 
   // =========================================================
-  // 7) UI & Animation System (保留 V4.8 功能)
+  // 7) UI System (你原本 그대로)
   // =========================================================
   const ExpertCardSystem = {
     LEVELS: {
@@ -292,8 +290,12 @@
       const container = document.getElementById('expert-container');
       if (!container || !container.dataset.caseName) return;
 
-      const caseName = container.dataset.caseName;
-      const matchingExperts = data.filter(e => e.case_name === caseName && this.isInTimeRange(e.start, e.end));
+      const caseName = String(container.dataset.caseName || "").trim(); // ✅ Trim 防呆
+      const list = Array.isArray(data) ? data : [];
+
+      const matchingExperts = list.filter(e =>
+        e && e.case_name === caseName && this.isInTimeRange(e.start, e.end)
+      );
 
       if (matchingExperts.length === 0) return;
 
@@ -319,7 +321,7 @@
   }
 
   // =========================================================
-  // 8) Main (Aligned entry)
+  // 8) Main
   // =========================================================
   async function init() {
     const container = document.getElementById('expert-container');
