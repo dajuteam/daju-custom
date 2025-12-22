@@ -1,11 +1,11 @@
 /**
- * Expert Card Widget V4.9.1 (Stable A-Rule + Safe Fetch)
+ * Expert Card Widget V4.10 (Meta Stable - Same Standard as Ads/CaseList)
  * ✅ Whitepaper aligned:
  * - 15min local TTL => 0 request
- * - after TTL => 1 probe request with ?v=version
- * - 304 => renew timestamp only
- * - 200 => update cache
- * - refresh => add refresh=1 + cache:reload
+ * - after TTL => meta=1 (version probe)
+ * - meta same => renew timestamp only (0 full download)
+ * - meta diff => refresh=1 FULL (guaranteed update, bypass edge)
+ * - fallback => PROBE (?v=version) 304 renew / 200 update
  * ✅ A Rule (Hard):
  * - no version => FULL (NO ?v)
  * - has version => PROBE (WITH ?v)
@@ -22,14 +22,16 @@
   const LOCAL_CACHE_EXPIRY_MS = 15 * 60 * 1000;
   const FETCH_TIMEOUT_MS = 8000;
 
+  // meta hardening
+  const META_TIMEOUT_MS = 5000;
+  const META_FAIL_COOLDOWN_MS = 60 * 1000;
+
   // =========================================================
   // 1) CSS (原樣保留)
   // =========================================================
   const WIDGET_CSS = `/*（你的 CSS 原封不動）*/` + `
-    /* Zero CLS: 容器預設隱藏 */
     .expert-container-v4 { display: none; } 
     .expert-container-v4.loaded { display: block; } 
-    /* 初始狀態：隱藏且下沉 */
     .expert-card-hidden { 
         opacity: 0 !important; 
         visibility: hidden !important; 
@@ -43,9 +45,8 @@
     }
     @keyframes expertFadeMoveUp { 
         0% { opacity: 0; transform: translateY(30px); } 
-        100% { opacity: 1; transform: translateY(0); } 
+        100% { transform: translateY(0); opacity: 1; } 
     }
-    /* 以下為卡片視覺樣式 (保留原設計) */
     .expert-card-wrapper { position: relative; border-radius: 8px; overflow: hidden; width: 100%; max-width: 1000px; z-index: 0; line-height: 1.5; letter-spacing: 0; margin: 20px 0; isolation: isolate; }
     .expert-card-wrapper::before { content: ""; position: absolute; top: -3px; left: -3px; right: -3px; bottom: -3px; border-radius: inherit; background: linear-gradient(130deg, #fffaea, #eccb7d, #fff2d4, #f4c978, #ffedb1, #e6c079, #e7c57c); background-size: 400% 400%; animation: borderFlow 10s linear infinite; z-index: -2; box-shadow: 0 0 16px rgba(4, 255, 0, 0.715); pointer-events: none; }
     @keyframes borderFlow { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
@@ -105,7 +106,7 @@
   // =========================================================
   // 4) Safe fetch JSON (防 HTML/502)
   // =========================================================
-  async function fetchJSON(url, { cacheMode }, timeoutMs = FETCH_TIMEOUT_MS) {
+  async function fetchJSON(url, { cacheMode }, timeoutMs) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -121,7 +122,9 @@
   // =========================================================
   // 5) Request builder (A Rule - HARD)
   // =========================================================
-  function buildUrl({ version, refresh }) {
+  function buildUrl({ version, refresh, meta }) {
+    if (meta) return `${API_URL}?meta=1`;
+
     // A Rule:
     // - no version => FULL (no ?v)
     // - has version => PROBE (with ?v)
@@ -134,53 +137,88 @@
   }
 
   async function requestExpert({ version, refresh }) {
-    const url = buildUrl({ version, refresh });
+    const url = buildUrl({ version, refresh, meta: false });
     const cacheMode = refresh ? "reload" : "no-cache";
-    return await fetchJSON(url, { cacheMode });
+    return await fetchJSON(url, { cacheMode }, FETCH_TIMEOUT_MS);
+  }
+
+  async function requestMeta() {
+    const url = buildUrl({ meta: true });
+    return await fetchJSON(url, { cacheMode: "no-cache" }, META_TIMEOUT_MS);
   }
 
   // =========================================================
-  // 6) Smart cache (Whitepaper)
+  // 6) Smart cache (Meta Standard)
   // =========================================================
   async function getExpertSmart(forceRefresh) {
     const now = Date.now();
     const cached = readCache();
+    const cachedVersion = cached && cached.version ? String(cached.version) : "";
+    const cachedTs = cached && cached.timestamp ? Number(cached.timestamp) : 0;
+    const cachedData = cached ? cached.data : null;
+    const metaFailAt = cached && cached.metaFailAt ? Number(cached.metaFailAt) : 0;
 
-    // A) First load OR refresh => FULL (no v)
+    // A) First load OR forceRefresh => FULL
     if (!cached || forceRefresh) {
       const r = await requestExpert({ version: "", refresh: !!forceRefresh }).catch(() => null);
       const payload = r && r.data;
 
       if (payload && payload.code === 200 && payload.data) {
-        writeCache({ version: String(payload.version || "0"), data: payload.data, timestamp: now });
+        writeCache({ version: String(payload.version || "0"), data: payload.data, timestamp: now, metaFailAt: 0 });
         return payload.data;
       }
       return cached ? cached.data : null;
     }
 
-    // B) Within interval => 0 request
-    if (cached.timestamp && (now - cached.timestamp < LOCAL_CACHE_EXPIRY_MS)) {
-      return cached.data;
+    // B) within 15 min => 0 request
+    if (cachedTs && (now - cachedTs < LOCAL_CACHE_EXPIRY_MS)) {
+      return cachedData;
     }
 
-    // C) After interval => PROBE (with v)
-    const r = await requestExpert({ version: cached.version, refresh: false }).catch(() => null);
+    // C) meta probe (cooldown)
+    let metaVersion = "";
+    if (!metaFailAt || (now - metaFailAt > META_FAIL_COOLDOWN_MS)) {
+      const m = await requestMeta().catch(() => null);
+      metaVersion = m && m.data && m.data.version ? String(m.data.version) : "";
+
+      // meta failed => cooldown mark
+      if (!metaVersion) {
+        writeCache({ ...cached, metaFailAt: now });
+      }
+    }
+
+    // ✅ meta changed => refresh=1 FULL (guaranteed update, bypass edge)
+    if (metaVersion && cachedVersion && metaVersion !== cachedVersion) {
+      const r = await requestExpert({ version: "", refresh: true }).catch(() => null);
+      const payload = r && r.data;
+
+      if (payload && payload.code === 200 && payload.data) {
+        writeCache({ version: String(payload.version || metaVersion), data: payload.data, timestamp: now, metaFailAt: 0 });
+        return payload.data;
+      }
+
+      // refresh failed => fallback old
+      writeCache({ ...cached, timestamp: now, metaFailAt: 0 });
+      return cachedData;
+    }
+
+    // D) fallback probe (A rule): ?v=oldversion (304 renew / 200 update)
+    const r = await requestExpert({ version: cachedVersion, refresh: false }).catch(() => null);
     const payload = r && r.data;
 
-    // 304 => renew timestamp only
     if (payload && payload.code === 304) {
-      writeCache({ ...cached, timestamp: now });
-      return cached.data;
+      writeCache({ ...cached, timestamp: now, metaFailAt: 0 });
+      return cachedData;
     }
 
-    // 200 => update
     if (payload && payload.code === 200 && payload.data) {
-      writeCache({ version: String(payload.version || "0"), data: payload.data, timestamp: now });
+      writeCache({ version: String(payload.version || "0"), data: payload.data, timestamp: now, metaFailAt: 0 });
       return payload.data;
     }
 
     // fallback
-    return cached.data;
+    writeCache({ ...cached, timestamp: now, metaFailAt: 0 });
+    return cachedData;
   }
 
   // =========================================================
@@ -290,7 +328,7 @@
       const container = document.getElementById('expert-container');
       if (!container || !container.dataset.caseName) return;
 
-      const caseName = String(container.dataset.caseName || "").trim(); // ✅ Trim 防呆
+      const caseName = String(container.dataset.caseName || "").trim();
       const list = Array.isArray(data) ? data : [];
 
       const matchingExperts = list.filter(e =>
