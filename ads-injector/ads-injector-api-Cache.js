@@ -1,8 +1,10 @@
 /**
- * 大橘廣告管理系統API版本 (V4.4 - Pure Core Version)
- * Daju Ad Management System (V4.4 - Pure Core Version)
+ * 大橘廣告管理系統API版本 (V4.5 - Meta Stable Version)
+ * Daju Ad Management System (V4.5 - Meta Stable Version)
  * 核心：釋放 Cloudflare Edge Cache、?refresh 真正繞過快取、請求超時保護、零 CLS 跳動
- * 變更：移除內建 Loading UI，交由外部統一管理。
+ * 變更（相容不破壞）：
+ * 1) 15 分鐘後改為「meta=1 版本檢查」→ 版本不同直接 refresh=1 拉 full（更穩，不依賴 304）
+ * 2) 其餘 render / slot / lazy iframe / CSS 完全保留原邏輯
  *
  * ✅ 使用方式
  * 1) 把 ADS_GAS_URL 指向你的 Cloudflare Worker URL
@@ -94,6 +96,12 @@ async function fetchAdsByClientVersion(cachedVersion, bypassCache = false) {
   return await fetchJSON(url, fetchOptions);
 }
 
+// ✅ 新增：meta 版本檢查（超輕量）
+async function fetchMetaVersion() {
+  // meta 本身很省，timeout 可以短一點
+  return await fetchJSON(`${ADS_GAS_URL}?meta=1`, {}, 4000);
+}
+
 // ==========================================
 //  5) render slot
 // ==========================================
@@ -160,12 +168,12 @@ function renderSlot(slot, adData) {
 }
 
 // ==========================================
-//  6) Smart cache logic
+//  6) Smart cache logic (Meta Stable)
 // ==========================================
 async function getAdsSmart(forceRefresh) {
   const cached = readCache();
 
-  // 首次/強制：1 次請求（不帶 v）
+  // 首次/強制：1 次請求（不帶 v；若 forceRefresh 則 refresh=1）
   if (!cached || forceRefresh) {
     try {
       const full = await fetchAdsByClientVersion("", forceRefresh);
@@ -184,24 +192,31 @@ async function getAdsSmart(forceRefresh) {
     return cached.data;
   }
 
-  // 15 分鐘後：1 次請求（帶 v 協議）
+  // 15 分鐘後：✅ 先 meta 檢查（更穩，不依賴 304）
   try {
-    const check = await fetchAdsByClientVersion(cached.version, false);
+    const meta = await fetchMetaVersion();
+    const latest = meta && meta.code === 200 ? String(meta.version || "0") : "";
 
-    // 304：續命 timestamp（避免每次都打 API）
-    if (check && (check.code === 304 || check.notModified)) {
+    // 版本沒變：續命 timestamp（避免每次都打 full）
+    if (latest && String(cached.version || "0") === latest) {
       writeCache({ ...cached, timestamp: Date.now() });
       return cached.data;
     }
 
-    // 200：更新 cache
-    if (check && check.code === 200 && check.data) {
-      writeCache({ version: String(check.version || "0"), data: check.data, timestamp: Date.now() });
-      return check.data;
+    // 版本有變：直接 refresh=1 拉 full（保證立刻更新，不需使用者加 ?refresh）
+    const full = await fetchAdsByClientVersion("", true);
+    if (full && full.code === 200 && full.data) {
+      writeCache({ version: String(full.version || "0"), data: full.data, timestamp: Date.now() });
+      return full.data;
     }
 
+    // meta 失敗或 full 失敗：退回舊資料（穩）
+    writeCache({ ...cached, timestamp: Date.now() });
     return cached.data;
+
   } catch (err) {
+    // 任何錯誤：退回舊資料（穩）
+    writeCache({ ...cached, timestamp: Date.now() });
     return cached.data;
   }
 }
@@ -244,9 +259,7 @@ async function insertAds() {
   const slotMap = buildSlotMap();
   if (!slotMap.size) return;
 
-  // 移除內部 Loading 呼叫，直接獲取資料
   const ads = await getAdsSmart(forceRefresh);
-
   if (!ads) return;
 
   slotMap.forEach((slot, slotId) => renderSlot(slot, ads[slotId]));
