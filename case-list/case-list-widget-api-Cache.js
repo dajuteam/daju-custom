@@ -1,8 +1,9 @@
 /**
- * 房地產物件列表 Widget (V4.8 - One-Key Cache + Auto Height + Whitepaper A-Rule)
- * - Cache: Single-Key (daju_case_cache) => { version, data, ts, metaFailAt }
+ * 房地產物件列表 Widget (V4.9 - Meta Stable + Whitepaper A-Rule)
+ * - Cache: One-Key (daju_case_cache) => { version, data, ts, metaFailAt }
  * - A Rule: no version -> FULL (no ?v), has version -> PROBE (?v=...)
- * - UX: display:none default (zero placeholder) + IntersectionObserver fade-in (in-viewport)
+ * - Upgrade: meta detects version change => refresh=1 FULL (guaranteed update)
+ * - UX/CSS/Render: same as V4.8
  * - Hardening: Safe Fetch/JSON, Meta fail cooldown, 304 renew, 503 fallback
  */
 
@@ -155,13 +156,14 @@
     }
 
     // B) Meta 探針（冷卻時間內不打 meta）
+    let metaVersion = "";
     if (now - metaFailAt > CONFIG.META_FAIL_COOLDOWN_MS) {
       const metaRes = await fetchJSON(`${CONFIG.API_URL}?meta=1`, {
         timeoutMs: CONFIG.META_TIMEOUT_MS,
         cacheMode: "no-cache"
       }).catch(() => null);
 
-      const metaVersion = metaRes && metaRes.data && metaRes.data.version;
+      metaVersion = metaRes && metaRes.data && metaRes.data.version ? String(metaRes.data.version) : "";
 
       // 版本相同：續命（只更新 ts，不動 data）
       if (metaVersion && cachedVersion && metaVersion === cachedVersion && cachedData) {
@@ -175,7 +177,7 @@
       }
 
       // meta 失敗：記錄失敗時間（避免一直打）
-      if (!metaRes || !metaRes.data || !metaRes.data.version) {
+      if (!metaVersion) {
         safeSetCache({
           version: cachedVersion || "",
           data: cachedData || [],
@@ -185,9 +187,36 @@
       }
     }
 
+    // ✅ Upgrade（白皮書一致性）：
+    // 一旦 metaVersion 存在且與 cachedVersion 不同 => 直接 refresh=1 FULL 拉新（避免被 Edge 舊 ?v 回應拖住）
+    if (metaVersion && cachedVersion && metaVersion !== cachedVersion) {
+      const fullRefreshUrl = `${CONFIG.API_URL}?refresh=1`;
+      const refreshRes = await fetchJSON(fullRefreshUrl, {
+        timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
+        cacheMode: "reload"
+      }).catch(() => null);
+
+      const payload = refreshRes && refreshRes.data;
+
+      if (payload && payload.code === 200 && Array.isArray(payload.data)) {
+        const clean = sanitizeData_(payload.data);
+        safeSetCache({
+          version: payload.version ? String(payload.version) : metaVersion,
+          data: clean,
+          ts: now,
+          metaFailAt: 0
+        });
+        return clean;
+      }
+
+      // refresh 失敗：退回舊資料（穩）
+      if (cachedData) {
+        safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
+        return sanitizeData_(cachedData);
+      }
+    }
+
     // C) Full/Probe 抓取（A 規則）
-    // - 無 version：FULL（不帶 ?v）
-    // - 有 version：PROBE（帶 ?v=舊版，可能 304/200）
     const url = CONFIG.FORCE_REFRESH
       ? `${CONFIG.API_URL}?refresh=1`
       : (cachedVersion ? `${CONFIG.API_URL}?v=${encodeURIComponent(cachedVersion)}` : `${CONFIG.API_URL}`);
@@ -352,24 +381,20 @@
 
     injectStyles();
 
-    // ✅ 套上 widget class，預設 display:none（不佔空間）
     widgets.forEach(w => {
       w.classList.add("case-list-widget-target");
       w.classList.remove("is-ready", "show");
-      // 不放 skeleton：避免佔空間（你要求的）
       w.innerHTML = "";
     });
 
     const data = await unifiedDataEngine();
     const idx = indexByCaseName(Array.isArray(data) ? data : []);
 
-    // ✅ 先 render DOM，再讓它「開始佔空間」
     widgets.forEach(w => {
       renderWidget(w, idx);
       w.classList.add("is-ready");
     });
 
-    // ✅ 進入視口才淡入（避免在視窗外播完）
     setupViewportReveal(Array.from(widgets));
   }
 
