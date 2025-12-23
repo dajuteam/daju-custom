@@ -193,26 +193,23 @@ async function fetchMetaVersion() {
 }
 
 // ==========================================
-//  5) render slot（✅ 加入 apiVersion 自動 bust）
-//  - ✅ YouTube：回到「data-src + lazy load」預設方式
-//  - ✅ Image：只有 link 有值才包 <a>，否則純圖片
+//  5) render slot（完整可覆蓋版）
 // ==========================================
 function renderSlot(slot, adData, apiVersion) {
-  // ✅ 1. 永遠回到「乾淨基礎狀態」
+  // 1. 回到乾淨基礎狀態（避免 class/DOM 殘留）
   if (slot.dataset.baseClass != null) {
     slot.className = slot.dataset.baseClass;
   } else {
     slot.className = "";
   }
 
-  // 清內容
   slot.innerHTML = "";
   slot.style.display = "none";
 
-  // ✅ 2. 沒資料 = 乾淨空 slot
+  // 沒資料直接結束
   if (!adData) return;
 
-  // ✅ 3. 本次 render 才決定要不要加 class
+  // 本次 render 才套用 class
   if (adData.class) {
     String(adData.class)
       .split(/\s+/)
@@ -223,17 +220,34 @@ function renderSlot(slot, adData, apiVersion) {
 
   let hasContent = false;
 
-  // --- image ---
+  // ==================================================
+  // IMAGE（支援：有 link / 無 link + 正確 alt/title）
+  // ==================================================
   if (adData.type === "image" && adData.img) {
     const img = document.createElement("img");
-    img.src = appendV(adData.img, apiVersion); // ✅ bust
+    img.src = appendV(adData.img, apiVersion);
     img.loading = "lazy";
     img.setAttribute("decoding", "async");
-    img.alt = adData.alt || adData.title || "房產廣告";
+
+    // ---- alt 邏輯（無障礙 / fallback）----
+    const altText =
+      (adData.alt != null && String(adData.alt).trim() !== "")
+        ? String(adData.alt).trim()
+        : ((adData.title != null && String(adData.title).trim() !== "")
+            ? String(adData.title).trim()
+            : "房產廣告");
+
+    img.alt = altText;
+
+    // ---- title 屬性（桌機 hover 才可能看到）----
+    const titleText = (adData.title != null) ? String(adData.title).trim() : "";
+    if (titleText) {
+      img.title = titleText;
+    }
 
     const link = (adData.link != null) ? String(adData.link).trim() : "";
 
-    // ✅ 只有 link 有值才包 <a>，否則純圖片
+    // 有 link 才包 <a>
     if (link) {
       const a = document.createElement("a");
       a.href = link;
@@ -247,13 +261,15 @@ function renderSlot(slot, adData, apiVersion) {
 
     hasContent = true;
 
-  // --- youtube (back to default lazy iframe) ---
+  // ==================================================
+  // YOUTUBE（回到原本預設：data-src + lazy iframe）
+  // ==================================================
   } else if (adData.type === "youtube" && adData.video) {
     const wrapper = document.createElement("div");
     wrapper.className = "ad-video-wrapper";
 
     const iframe = document.createElement("iframe");
-    iframe.setAttribute("data-src", appendV(adData.video, apiVersion)); // ✅ bust
+    iframe.setAttribute("data-src", appendV(adData.video, apiVersion));
     iframe.allowFullscreen = true;
     iframe.title = adData.title || "video";
     iframe.setAttribute("loading", "lazy");
@@ -263,12 +279,15 @@ function renderSlot(slot, adData, apiVersion) {
     slot.appendChild(wrapper);
     hasContent = true;
 
-  // --- html ---
+  // ==================================================
+  // HTML（先快檢，再 bust src）
+  // ==================================================
   } else if (adData.type === "html" && adData.html) {
     slot.innerHTML = bustHtmlUrls(adData.html, apiVersion);
     hasContent = true;
   }
 
+  // 顯示控制
   if (hasContent) {
     slot.style.display = "block";
     slot.classList.add("ad-fade-in");
