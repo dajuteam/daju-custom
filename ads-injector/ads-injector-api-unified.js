@@ -11,7 +11,7 @@
 // ==========================================
 const ADS_GAS_URL = "https://daju-unified-route-api.dajuteam88.workers.dev/?type=ads_injector"; // ✅ 共用路由
 const LOCAL_CACHE_KEY = "daju_ads_cache";
-const LOCAL_CACHE_EXPIRY_MS = 15 * 60 * 1000; // 15 分鐘
+const LOCAL_CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 分鐘
 
 // 🌐 fetch 超時保護
 const FETCH_TIMEOUT_MS = 8000;
