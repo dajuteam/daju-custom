@@ -1,17 +1,19 @@
 /**
- * 大橘廣告管理系統API版本 (V4.7 - Meta Stable + BFCache Fix + Deferred Cache Write + YT Poster Click)
+ * 大橘廣告管理系統API版本 (V4.7.1 - Meta Stable + BFCache Fix + Deferred Cache Write + YT Back to Default Lazy)
  * 核心：
  * - local TTL：0 request
  * - 過期後 meta=1 探針：版本不同 => refresh=1 拉 full
- * - 自動把 version 加到 img/html 內資源 URL（解「昨天看過今天不更新」）
+ * - 自動把 version 加到 img/html/iframe 內資源 URL（解「昨天看過今天不更新」）
  *
- * ✅ 本次必做優化（你指定）：
+ * ✅ 保留你指定的必做優化：
  * 1) pageshow/BFCache（不更新最關鍵）
  * 2) writeCache 延後寫入（手機卡頓最關鍵）
  * 3) bustHtmlUrls 先 check（超低成本高回報）
  * 4) readyState 啟動（首屏速度）
  * 5) fetchJSON 更穩（穩定性/例外成本）
- * 6) YouTube：縮圖 + 點擊後才載入 iframe（首屏體感最顯著）
+ *
+ * ❌ 移除：YouTube 縮圖 + 點擊後才載入 iframe
+ * ✅ 改回：原本「data-src + IntersectionObserver lazy load」預設讀取方式
  */
 
 // ==========================================
@@ -19,7 +21,7 @@
 // ==========================================
 const ADS_GAS_URL = "https://daju-unified-route-api.dajuteam88.workers.dev/?type=ads_injector"; // ✅ 共用路由
 const LOCAL_CACHE_KEY = "daju_ads_cache";
-const LOCAL_CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 分鐘（你目前設定；未改參數，先保守）
+const LOCAL_CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 分鐘（你目前設定；先保守）
 const FETCH_TIMEOUT_MS = 8000;
 
 // meta timeout（維持你原 4000，但統一成常數好管理）
@@ -42,7 +44,7 @@ function defer(fn) {
 
 // ==========================================
 //  1) CSS 注入 (僅保留廣告核心樣式)
-//  - ✅ 新增：YT poster button/overlay 基本樣式（不影響既有 slot class 邏輯）
+//  - ✅ 已移除 YT poster button/overlay 相關樣式（因為回到預設 lazy iframe）
 // ==========================================
 function injectStyles() {
   if (document.getElementById("daju-ad-manager-styles")) return;
@@ -55,38 +57,6 @@ function injectStyles() {
     .ad-video-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
     .ad-fade-in { animation: adFadeIn 0.35s ease-in forwards; }
     @keyframes adFadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-    /* ✅ YouTube Poster (縮圖點擊才載入 iframe) */
-    .ad-yt-poster {
-      position: absolute; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer; user-select: none;
-      background: #000;
-    }
-    .ad-yt-poster img {
-      width: 100%; height: 100%;
-      object-fit: cover;
-      opacity: 0.92;
-    }
-    .ad-yt-play {
-      position: absolute;
-      width: 68px; height: 48px;
-      border-radius: 12px;
-      background: rgba(0,0,0,0.65);
-      display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-    }
-    .ad-yt-play:before {
-      content: "";
-      display: block;
-      margin-left: 4px;
-      width: 0; height: 0;
-      border-left: 16px solid #fff;
-      border-top: 10px solid transparent;
-      border-bottom: 10px solid transparent;
-    }
-    .ad-yt-poster:focus { outline: none; }
-    .ad-yt-poster:focus-visible { box-shadow: 0 0 0 3px rgba(255,255,255,0.85) inset; }
   `;
   document.head.appendChild(style);
 }
@@ -137,13 +107,11 @@ async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
       }
     });
 
-    // 盡量避免 res.json() 丟例外打爆流程
     let data = null;
     try { data = await res.json(); } catch { data = null; }
 
     return data;
   } catch (e) {
-    // 任何 fetch/abort/network error：回 null，交給上層 fallback
     return null;
   } finally {
     clearTimeout(timer);
@@ -225,43 +193,9 @@ async function fetchMetaVersion() {
 }
 
 // ==========================================
-//  4.7) YouTube helpers（✅ 新增）
-//  - 把 embed URL 轉成影片 id，再組縮圖
-// ==========================================
-function getYouTubeIdFromUrl(u) {
-  try {
-    const s = String(u || "").trim();
-    if (!s) return "";
-
-    // 1) https://www.youtube.com/embed/VIDEO_ID
-    let m = s.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{6,})/i);
-    if (m && m[1]) return m[1];
-
-    // 2) https://youtu.be/VIDEO_ID
-    m = s.match(/youtu\.be\/([a-zA-Z0-9_-]{6,})/i);
-    if (m && m[1]) return m[1];
-
-    // 3) watch?v=VIDEO_ID
-    const url = new URL(s, location.href);
-    const v = url.searchParams.get("v");
-    if (v) return v;
-
-    return "";
-  } catch {
-    return "";
-  }
-}
-
-function buildYouTubeThumbUrl(videoUrl) {
-  const id = getYouTubeIdFromUrl(videoUrl);
-  if (!id) return "";
-  // 先用 hqdefault（最穩）；maxresdefault 有時不存在會 404
-  return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
-}
-
-// ==========================================
 //  5) render slot（✅ 加入 apiVersion 自動 bust）
-//  - ✅ YouTube：改為「縮圖 + 點擊後才載入 iframe」
+//  - ✅ YouTube：回到「data-src + lazy load」預設方式
+//  - ✅ Image：只有 link 有值才包 <a>，否則純圖片
 // ==========================================
 function renderSlot(slot, adData, apiVersion) {
   // ✅ 1. 永遠回到「乾淨基礎狀態」
@@ -289,89 +223,48 @@ function renderSlot(slot, adData, apiVersion) {
 
   let hasContent = false;
 
-if (adData.type === "image" && adData.img) {
-  const img = document.createElement("img");
-  img.src = appendV(adData.img, apiVersion); // ✅ bust
-  img.loading = "lazy";
-  img.setAttribute("decoding", "async");
-  img.alt = adData.alt || adData.title || "房產廣告";
+  // --- image ---
+  if (adData.type === "image" && adData.img) {
+    const img = document.createElement("img");
+    img.src = appendV(adData.img, apiVersion); // ✅ bust
+    img.loading = "lazy";
+    img.setAttribute("decoding", "async");
+    img.alt = adData.alt || adData.title || "房產廣告";
 
-  const link = (adData.link != null) ? String(adData.link).trim() : "";
+    const link = (adData.link != null) ? String(adData.link).trim() : "";
 
-  // ✅ 只有 link 有值才包 <a>，否則純圖片
-  if (link) {
-    const a = document.createElement("a");
-    a.href = link;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.appendChild(img);
-    slot.appendChild(a);
-  } else {
-    slot.appendChild(img);
-  }
+    // ✅ 只有 link 有值才包 <a>，否則純圖片
+    if (link) {
+      const a = document.createElement("a");
+      a.href = link;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.appendChild(img);
+      slot.appendChild(a);
+    } else {
+      slot.appendChild(img);
+    }
 
-  hasContent = true;
-}else if (adData.type === "youtube" && adData.video) {
-    // =========================================================
-    // ✅✅✅ YouTube 重大改動：縮圖 + 點擊後才載入 iframe
-    // =========================================================
+    hasContent = true;
+
+  // --- youtube (back to default lazy iframe) ---
+  } else if (adData.type === "youtube" && adData.video) {
     const wrapper = document.createElement("div");
     wrapper.className = "ad-video-wrapper";
 
-    const embedUrl = appendV(adData.video, apiVersion); // ✅ bust
-    const thumb = buildYouTubeThumbUrl(adData.video);
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("data-src", appendV(adData.video, apiVersion)); // ✅ bust
+    iframe.allowFullscreen = true;
+    iframe.title = adData.title || "video";
+    iframe.setAttribute("loading", "lazy");
+    iframe.referrerPolicy = "strict-origin-when-cross-origin";
 
-    // Poster（可 focus，無障礙）
-    const posterBtn = document.createElement("button");
-    posterBtn.type = "button";
-    posterBtn.className = "ad-yt-poster";
-    posterBtn.setAttribute("aria-label", "播放影片");
-    posterBtn.style.border = "0";
-    posterBtn.style.padding = "0";
-
-    // 縮圖
-    if (thumb) {
-      const img = document.createElement("img");
-      img.src = thumb;               // ✅ 先載入縮圖，超快
-      img.alt = adData.title || "YouTube";
-      img.loading = "lazy";
-      img.setAttribute("decoding", "async");
-      posterBtn.appendChild(img);
-    }
-
-    // Play Icon
-    const play = document.createElement("div");
-    play.className = "ad-yt-play";
-    posterBtn.appendChild(play);
-
-    // 點擊後才建立 iframe（避免首屏被 YouTube 拖慢）
-    posterBtn.addEventListener("click", () => {
-      // 防重複建立
-      if (wrapper.querySelector("iframe")) return;
-
-      const iframe = document.createElement("iframe");
-      iframe.src = embedUrl; // ✅ 這裡才真正載入 YouTube
-      iframe.allowFullscreen = true;
-      iframe.title = adData.title || "video";
-      iframe.setAttribute("loading", "lazy");
-      iframe.referrerPolicy = "strict-origin-when-cross-origin";
-
-      // 取代 poster
-      wrapper.innerHTML = "";
-      wrapper.appendChild(iframe);
-    }, { passive: true });
-
-    wrapper.appendChild(posterBtn);
+    wrapper.appendChild(iframe);
     slot.appendChild(wrapper);
     hasContent = true;
 
-    // ✅ 如果你未來想「回到原本預設 lazy iframe」：
-    // 1) 把這個 youtube 區塊整段改回「建立 iframe + data-src」
-    // 2) 然後保留 setupLazyIframes()（下方還留著，供你切回）
-    // ---------------------------------------------------------
-
+  // --- html ---
   } else if (adData.type === "html" && adData.html) {
-    // ✅ bust html 內所有 src=
     slot.innerHTML = bustHtmlUrls(adData.html, apiVersion);
     hasContent = true;
   }
@@ -393,15 +286,11 @@ async function getAdsSmart(forceRefresh) {
 
   // 首次/強制：1 次請求（不帶 v；若 forceRefresh 則 refresh=1）
   if (!cached || forceRefresh) {
-    try {
-      const full = await fetchAdsByClientVersion("", forceRefresh);
-      if (full && full.code === 200 && full.data) {
-        const v = String(full.version || "0");
-        writeCache({ version: v, data: full.data, timestamp: Date.now() });
-        return { data: full.data, version: v };
-      }
-    } catch (e) {
-      console.error("Load failed:", e);
+    const full = await fetchAdsByClientVersion("", forceRefresh);
+    if (full && full.code === 200 && full.data) {
+      const v = String(full.version || "0");
+      writeCache({ version: v, data: full.data, timestamp: Date.now() });
+      return { data: full.data, version: v };
     }
     return cached ? { data: cached.data, version: String(cached.version || "0") } : null;
   }
@@ -412,43 +301,38 @@ async function getAdsSmart(forceRefresh) {
   }
 
   // TTL 後：先 meta 檢查
-  try {
-    const meta = await fetchMetaVersion();
-    const latest = meta && meta.code === 200 ? String(meta.version || "0") : "";
-    const oldV = String(cached.version || "0");
+  const meta = await fetchMetaVersion();
+  const latest = meta && meta.code === 200 ? String(meta.version || "0") : "";
+  const oldV = String(cached.version || "0");
 
-    // 版本沒變：續命 timestamp（延後寫入）
-    if (latest && oldV === latest) {
-      writeCache({ ...cached, timestamp: Date.now() });
-      return { data: cached.data, version: oldV };
-    }
-
-    // 版本有變：refresh=1 拉 full
-    const full = await fetchAdsByClientVersion("", true);
-    if (full && full.code === 200 && full.data) {
-      const v = String(full.version || latest || "0");
-      writeCache({ version: v, data: full.data, timestamp: Date.now() });
-      return { data: full.data, version: v };
-    }
-
-    // 失敗：退回舊資料
+  // 版本沒變：續命 timestamp（延後寫入）
+  if (latest && oldV === latest) {
     writeCache({ ...cached, timestamp: Date.now() });
     return { data: cached.data, version: oldV };
-
-  } catch (err) {
-    writeCache({ ...cached, timestamp: Date.now() });
-    return { data: cached.data, version: String(cached.version || "0") };
   }
+
+  // 版本有變：refresh=1 拉 full
+  const full = await fetchAdsByClientVersion("", true);
+  if (full && full.code === 200 && full.data) {
+    const v = String(full.version || latest || "0");
+    writeCache({ version: v, data: full.data, timestamp: Date.now() });
+    return { data: full.data, version: v };
+  }
+
+  // 失敗：退回舊資料（續命 timestamp）
+  writeCache({ ...cached, timestamp: Date.now() });
+  return { data: cached.data, version: oldV };
 }
 
 // ==========================================
-//  7) YouTube lazy load（保留：給你切回「原本預設方法」用）
-//  - ✅ 目前 YouTube 已改成「點擊才建立 iframe」
-//  - 如果你切回 data-src 版本，這段才需要保留呼叫
+//  7) YouTube lazy load（✅ 這就是「原本預設方法」）
 // ==========================================
 function setupLazyIframes() {
+  const frames = document.querySelectorAll("iframe[data-src]");
+  if (!frames.length) return;
+
   if (!("IntersectionObserver" in window)) {
-    document.querySelectorAll("iframe[data-src]").forEach(f => {
+    frames.forEach(f => {
       f.src = f.getAttribute("data-src");
       f.removeAttribute("data-src");
     });
@@ -465,7 +349,7 @@ function setupLazyIframes() {
     });
   }, { rootMargin: "200px 0px" });
 
-  document.querySelectorAll("iframe[data-src]").forEach(f => io.observe(f));
+  frames.forEach(f => io.observe(f));
 }
 
 // ==========================================
@@ -485,18 +369,15 @@ async function insertAds() {
   const result = await getAdsSmart(forceRefresh);
   if (!result || !result.data) return;
 
-  // ✅ 這裡把 version 帶進 renderSlot，讓圖片/HTML/YouTube embed 版本更新
   slotMap.forEach((slot, slotId) => {
     try {
       renderSlot(slot, result.data[slotId], result.version);
     } catch (e) {
-      // 單一 slot 壞掉不該拖垮整頁
       console.error("renderSlot failed:", slotId, e);
     }
   });
 
-  // ✅ 注意：目前 YouTube 已改成「點擊才建立 iframe」，所以 setupLazyIframes() 不再必要
-  // 但我保留這行（安全）：只有 data-src iframe 才會被掃到，現在通常為 0 個
+  // ✅ YouTube back to default: 這行現在「必要」
   setupLazyIframes();
 }
 
@@ -512,10 +393,8 @@ if (document.readyState === "loading") {
 }
 
 // ✅ pageshow/BFCache：從上一頁返回時，DOMContentLoaded 不會再跑
-// - persisted=true 代表 BFCache 恢復
 window.addEventListener("pageshow", (ev) => {
   if (ev && ev.persisted) {
-    // 重要：回來時重新執行一次，以便拿到最新版本並刷新畫面
     bootAds();
   }
 });
