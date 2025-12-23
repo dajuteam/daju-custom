@@ -11,7 +11,7 @@
   const CONFIG = {
     // ✅ Unified Router（你給的共用路由）
     // 注意：type 你提供是 cast_list（照你提供）
-    API_URL: "https://daju-unified-route-api.dajuteam88.workers.dev/?type=cast_list",
+    API_URL: "https://daju-unified-route-api.dajuteam88.workers.dev/?type=case_list",
 
     PROBE_INTERVAL_MS: 15 * 60 * 1000,  // 15 分鐘內 0 請求
     FETCH_TIMEOUT_MS: 8000,
