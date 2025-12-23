@@ -17,7 +17,7 @@
   // =========================================================
   // 0) Config
   // =========================================================
-  const API_URL = "daju-unified-route-api.dajuteam88.workers.dev?type=expert_card";
+  const API_URL = "https://daju-unified-route-api.dajuteam88.workers.dev?type=expert_card";
   const LOCAL_CACHE_KEY = "daju_expert_cache";
   const LOCAL_CACHE_EXPIRY_MS = 15 * 60 * 1000;
   const FETCH_TIMEOUT_MS = 8000;
