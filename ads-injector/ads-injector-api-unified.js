@@ -150,20 +150,27 @@ async function fetchMetaVersion() {
 //  5) render slot（✅ 加入 apiVersion 自動 bust）
 // ==========================================
 function renderSlot(slot, adData, apiVersion) {
-  if (slot.dataset.baseClass != null) slot.className = slot.dataset.baseClass;
-
-  if (!adData) {
-    slot.style.display = "none";
-    slot.innerHTML = "";
-    return;
+  // ✅ 1. 永遠回到「乾淨基礎狀態」
+  if (slot.dataset.baseClass != null) {
+    slot.className = slot.dataset.baseClass;
+  } else {
+    slot.className = "";
   }
 
+  // 清內容
   slot.innerHTML = "";
+  slot.style.display = "none";
 
+  // ✅ 2. 沒資料 = 乾淨空 slot
+  if (!adData) return;
+
+  // ✅ 3. 本次 render 才決定要不要加 class
   if (adData.class) {
-    String(adData.class).split(/\s+/).forEach(cls => {
-      if (cls.trim()) slot.classList.add(cls.trim());
-    });
+    String(adData.class)
+      .split(/\s+/)
+      .map(c => c.trim())
+      .filter(Boolean)
+      .forEach(c => slot.classList.add(c));
   }
 
   let hasContent = false;
