@@ -75,11 +75,9 @@ function injectStyles() {
 function readCache() {
   try { return JSON.parse(localStorage.getItem(LOCAL_CACHE_KEY) || "null"); } catch { return null; }
 }
-function writeCache(obj) {
-  defer(() => {
+  function writeCache(obj) {
     try { localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(obj)); } catch {}
-  });
-}
+  }
 
 // ==========================================
 //  3) slotMap（一次掃描 DOM，避免重複 query）
