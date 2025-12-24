@@ -1,12 +1,16 @@
 /**
- * 房地產物件列表 Widget (V4.12 - Ads-aligned Meta-First + Warm Compatible)
+ * 房地產物件列表 Widget (V4.12-FIX - Ads-aligned Meta-First + Warm Compatible)
  * ----------------------------------------------------------------------------
- * ✅ 目標：跟 Ads 同款的乾淨策略
+ * ✅ 目標：跟 Ads 同款的乾淨策略（你要的 Network 形態）
  *
- * 你要的 Network 形態：
+ * Network 形態（正常狀態只會出現這兩種）：
+ *   - ?type=case_list&meta=1
+ *   - ?type=case_list&v=最新版本
+ *
+ * ✅ 規則：
  * 1) 首次 / 清 localStorage：
- *    - 先打 meta=1 拿最新版本
- *    - 再打 v=latest 拉 full（✅ 可 HIT edge warm）
+ *    - 先 meta=1 拿最新版本
+ *    - 再 v=latest 拉 full（✅ 可 HIT edge warm）
  *    => 不再出現 ?type=case_list（no meta / no v）
  *
  * 2) TTL 內：0 request
@@ -18,6 +22,9 @@
  * 4) refresh 規則：
  *    - 只有你手動（網址 ?refresh 或 CONFIG.FORCE_REFRESH=true）才會走 refresh=1（BYPASS）
  *    - 正常流程（首次/TTL更新）都不使用 refresh=1（才能吃到 edge）
+ *
+ * ✅ BFCache：
+ * - 跟 Ads 同款：pageshow 只在 ev.persisted=true 才重跑
  *
  * ✅ 保持不變：
  * - UI/CSS/Render: SAME as V4.11
@@ -205,14 +212,12 @@
     }
 
     // ✅ 0) 手動強制刷新（僅 debug/救援）
-    // - 可用你 CONFIG.FORCE_REFRESH=true
-    // - 或者頁面網址帶 ?refresh
     let urlParamsHasRefresh = false;
     try { urlParamsHasRefresh = new URLSearchParams(location.search).has("refresh"); } catch {}
     const forceRefresh = !!CONFIG.FORCE_REFRESH || !!urlParamsHasRefresh;
 
     if (forceRefresh) {
-      // 先 meta 拿最新版本（更一致）
+      // 先 meta 拿最新版本（一致）
       const metaUrl = buildApiUrl_({ meta: true });
       const metaRes = await fetchJSON(metaUrl, {
         timeoutMs: CONFIG.META_TIMEOUT_MS,
@@ -244,12 +249,7 @@
       return [];
     }
 
-    // B) Meta 探針（冷卻時間內不打 meta）
-    let metaVersion = "";
-    const canMeta = (!metaFailAt || (now - metaFailAt > CONFIG.META_FAIL_COOLDOWN_MS));
-
-    // ✅ B-1) Cold / 清 localStorage：跟 Ads 同款 meta-first
-    // - 沒 cachedData 或沒 cachedVersion：先 meta 拿版本，再 v-full（不走 no-v）
+    // B) cold（首次/清 localStorage）：✅ meta-first（不走 no-v）
     const isCold = (!cachedData || !cachedVersion);
 
     if (isCold) {
@@ -259,13 +259,15 @@
         cacheMode: "no-store"
       }).catch(() => null);
 
-      metaVersion = metaRes && metaRes.data && metaRes.data.version ? String(metaRes.data.version) : "";
+      const metaVersion = metaRes && metaRes.data && metaRes.data.version ? String(metaRes.data.version) : "";
 
       if (metaVersion) {
         const vFullUrl = buildApiUrl_({ version: metaVersion });
+
+        // ✅ Ads 同款：v-full 用 cache:"default"（更好吃 edge warm / HIT）
         const vFullRes = await fetchJSON(vFullUrl, {
           timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
-          cacheMode: "no-cache"
+          cacheMode: "default"
         }).catch(() => null);
 
         const payload = vFullRes && vFullRes.data;
@@ -276,8 +278,8 @@
         }
       }
 
-      // Cold 但 meta 拿不到：不打 no-v（符合你要的乾淨策略）
-      // 有舊資料就回舊資料，沒有就空
+      // cold 但 meta 拿不到：維持乾淨策略（不打 no-v）
+      // 有舊就回舊，沒有就空
       if (cachedData) {
         safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: now });
         return sanitizeData_(cachedData);
@@ -285,7 +287,10 @@
       return [];
     }
 
-    // ✅ B-2) 非 cold：照白皮書 meta probe（含 cooldown）
+    // C) TTL 到：meta probe（含 cooldown）
+    let metaVersion = "";
+    const canMeta = (!metaFailAt || (now - metaFailAt > CONFIG.META_FAIL_COOLDOWN_MS));
+
     if (canMeta) {
       const metaUrl = buildApiUrl_({ meta: true });
       const metaRes = await fetchJSON(metaUrl, {
@@ -303,58 +308,44 @@
           ts: cachedTs || 0,
           metaFailAt: now
         });
-      } else {
-        // ✅ meta 成功：清除 failAt
-        safeSetCache({
-          version: cachedVersion || "",
-          data: cachedData || [],
-          ts: cachedTs || 0,
-          metaFailAt: 0
-        });
       }
 
-      // ✅ 版本相同：續命（只更新 ts，不拉 full）
-      if (metaVersion && cachedVersion && metaVersion === cachedVersion && cachedData) {
+      // ✅ 版本相同：只續命（0 full）
+      if (metaVersion && metaVersion === cachedVersion && cachedData) {
         safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
         return sanitizeData_(cachedData);
       }
 
-      // ✅ 版本有變：立刻用「新版本 v-full」拉 full（HIT edge）
+      // ✅ 版本不同：v-full（HIT edge）
       if (metaVersion && metaVersion !== cachedVersion) {
         const vFullUrl = buildApiUrl_({ version: metaVersion });
+
+        // ✅ Ads 同款：v-full 用 cache:"default"
         const vFullRes = await fetchJSON(vFullUrl, {
           timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
-          cacheMode: "no-cache"
+          cacheMode: "default"
         }).catch(() => null);
 
         const payload = vFullRes && vFullRes.data;
 
         if (payload && payload.code === 200 && Array.isArray(payload.data)) {
           const clean = sanitizeData_(payload.data);
-          safeSetCache({
-            version: metaVersion,
-            data: clean,
-            ts: now,
-            metaFailAt: 0
-          });
+          safeSetCache({ version: metaVersion, data: clean, ts: now, metaFailAt: 0 });
           return clean;
         }
 
-        // v-full 失敗：退回舊資料（穩）
-        if (cachedData) {
-          safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
-          return sanitizeData_(cachedData);
-        }
+        // 失敗：回舊（穩）+ 續命
+        safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
+        return sanitizeData_(cachedData);
       }
     }
 
-    // C) meta 拿不到（冷卻/失敗）：
-    // - 保守用「舊版 v-full」拉一次（維持 edge 命中率）
+    // D) meta 拿不到（冷卻/失敗）：保守用「舊版 v-full」拉一次（維持 edge 命中率）
     if (cachedVersion) {
       const url = buildApiUrl_({ version: cachedVersion });
       const res = await fetchJSON(url, {
         timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
-        cacheMode: "no-cache"
+        cacheMode: "default"
       }).catch(() => null);
 
       const payload = res && res.data;
@@ -368,12 +359,8 @@
     }
 
     // 最後 fallback：續命舊資料
-    if (cachedData) {
-      safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
-      return sanitizeData_(cachedData);
-    }
-
-    return [];
+    safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
+    return sanitizeData_(cachedData);
   }
 
   // ----------------------------
@@ -521,8 +508,10 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 
-  // ✅ BFCache / pageshow：不用重新整理也能重新跑一次
-  window.addEventListener("pageshow", function () {
-    try { init(); } catch (e) {}
+  // ✅ BFCache / pageshow：跟 Ads 同款（避免初次載入跑兩次）
+  window.addEventListener("pageshow", function (ev) {
+    if (ev && ev.persisted) {
+      try { init(); } catch (e) {}
+    }
   });
 })();
