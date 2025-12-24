@@ -336,6 +336,11 @@ async function getAdsSmart(forceRefresh) {
     const meta = await fetchMetaVersion();
     const latest = meta && meta.code === 200 ? String(meta.version || "0") : "";
 
+
+    // ✅ 兩個是debug
+  console.log("[ADS] meta=", meta);
+  console.log("[ADS] latest=", latest);
+    
     // ✅ 關鍵：不要 refresh=1，讓 edge 快取能命中
     const full = await fetchAdsByClientVersion(latest, false);
 
