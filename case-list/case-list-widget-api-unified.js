@@ -1,16 +1,19 @@
 /**
- * 房地產物件列表 Widget (V4.10 - Unified Router + Meta Stable + Whitepaper A-Rule)
- * - Cache: One-Key (daju_case_cache) => { version, data, ts, metaFailAt }
- * - A Rule: no version -> FULL (no &v), has version -> PROBE (&v=...)
- * - Upgrade: meta detects version change => refresh=1 FULL (guaranteed update)
- * - UX/CSS/Render: same as V4.9
- * - Hardening: Safe Fetch/JSON, Meta fail cooldown, 304 renew, 503 fallback
+ * 房地產物件列表 Widget (V4.11 - Whitepaper Cache + Warm Compatible)
+ * - Align with latest chain:
+ *   GAS meta=1 is version source
+ *   GAS full always 200 + data (no 304)
+ *   Worker caches by ?v=... (versioned full)
+ *   warm=1 can preheat edge
+ * - Frontend:
+ *   local TTL -> meta probe
+ *   version same -> renew ts (0 full)
+ *   version changed -> FULL with &v=newVersion (HIT edge)
+ * - UI/CSS/Render: SAME as V4.10
  */
 
 (function () {
   const CONFIG = {
-    // ✅ Unified Router（你給的共用路由）
-    // 注意：type 你提供是 cast_list（照你提供）
     API_URL: "https://daju-unified-route-api.dajuteam88.workers.dev/?type=case_list",
 
     PROBE_INTERVAL_MS: 15 * 60 * 1000,  // 15 分鐘內 0 請求
@@ -18,6 +21,8 @@
     META_TIMEOUT_MS: 5000,
     META_FAIL_COOLDOWN_MS: 60 * 1000,
     MAX_VISIBLE: 3,
+
+    // 僅做救援/除錯用（不要當正常更新）
     FORCE_REFRESH: false
   };
 
@@ -116,7 +121,11 @@
     const controller = new AbortController();
     const tid = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(url, { signal: controller.signal, cache: cacheMode || "no-cache", headers: { "Accept": "application/json" } });
+      const res = await fetch(url, {
+        signal: controller.signal,
+        cache: cacheMode || "no-cache",
+        headers: { "Accept": "application/json" }
+      });
       let data = null;
       try { data = await res.json(); } catch (e) { data = null; }
       return { ok: res.ok, status: res.status, data };
@@ -150,18 +159,20 @@
 
     if (meta) u.searchParams.set("meta", "1");
 
-    // A Rule：有 version => PROBE（帶 v），無 version => FULL（不帶 v）
+    // ✅ Whitepaper: versioned FULL for Worker cache key
+    // meta=0 且 version 有值 => &v=...
     if (!meta && version && String(version).trim() !== "") {
       u.searchParams.set("v", String(version));
     }
 
+    // ⚠️ refresh=1 只做救援/除錯（不作為正常更新）
     if (refresh) u.searchParams.set("refresh", "1");
 
     return u.toString();
   }
 
   // ----------------------------
-  // 3. Unified Data Engine (One-Key)（只動這段）
+  // 3. Unified Data Engine (One-Key)（✅ 對齊白皮書成功版）
   // ----------------------------
   async function unifiedDataEngine() {
     const now = Date.now();
@@ -171,14 +182,16 @@
     const cachedTs = parseInt(cache.ts || "0", 10) || 0;
     const metaFailAt = parseInt(cache.metaFailAt || "0", 10) || 0;
 
-    // A) 15 分鐘鎖定：有資料且未過期 => 0 請求
+    // A) TTL 內：0 請求
     if (cachedData && (now - cachedTs < CONFIG.PROBE_INTERVAL_MS)) {
       return sanitizeData_(cachedData);
     }
 
     // B) Meta 探針（冷卻時間內不打 meta）
     let metaVersion = "";
-    if (!metaFailAt || (now - metaFailAt > CONFIG.META_FAIL_COOLDOWN_MS)) {
+    const canMeta = (!metaFailAt || (now - metaFailAt > CONFIG.META_FAIL_COOLDOWN_MS));
+
+    if (canMeta) {
       const metaUrl = buildApiUrl_({ meta: true });
       const metaRes = await fetchJSON(metaUrl, {
         timeoutMs: CONFIG.META_TIMEOUT_MS,
@@ -187,13 +200,7 @@
 
       metaVersion = metaRes && metaRes.data && metaRes.data.version ? String(metaRes.data.version) : "";
 
-      // ✅ 版本相同：續命（只更新 ts，不動 data）
-      if (metaVersion && cachedVersion && metaVersion === cachedVersion && cachedData) {
-        safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
-        return sanitizeData_(cachedData);
-      }
-
-      // meta 失敗：記錄失敗時間（避免一直打）
+      // meta 失敗：記錄 failAt，避免一直打
       if (!metaVersion) {
         safeSetCache({
           version: cachedVersion || "",
@@ -201,40 +208,60 @@
           ts: cachedTs || 0,
           metaFailAt: now
         });
-      }
-    }
-
-    // ✅ Upgrade：meta 版本有變 => refresh=1 FULL（保證更新）
-    if (metaVersion && cachedVersion && metaVersion !== cachedVersion) {
-      const refreshUrl = buildApiUrl_({ refresh: true }); // ✅ 不會出現 ?type=... ?refresh=1
-      const refreshRes = await fetchJSON(refreshUrl, {
-        timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
-        cacheMode: "reload"
-      }).catch(() => null);
-
-      const payload = refreshRes && refreshRes.data;
-
-      if (payload && payload.code === 200 && Array.isArray(payload.data)) {
-        const clean = sanitizeData_(payload.data);
-        safeSetCache({
-          version: payload.version ? String(payload.version) : metaVersion,
-          data: clean,
-          ts: now,
-          metaFailAt: 0
-        });
-        return clean;
+      } else {
+        // ✅ meta 成功：清除 failAt
+        if (cachedData) {
+          // 先把 metaFailAt 清掉，避免後續邏輯把它留著
+          safeSetCache({
+            version: cachedVersion || "",
+            data: cachedData || [],
+            ts: cachedTs || 0,
+            metaFailAt: 0
+          });
+        }
       }
 
-      // refresh 失敗：退回舊資料（穩）
-      if (cachedData) {
+      // ✅ 版本相同：續命（只更新 ts，不拉 full）
+      if (metaVersion && cachedVersion && metaVersion === cachedVersion && cachedData) {
         safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
         return sanitizeData_(cachedData);
       }
+
+      // ✅ 版本有變：立刻用「新版本 v-full」拉 full（HIT edge）
+      if (metaVersion && metaVersion !== cachedVersion) {
+        const vFullUrl = buildApiUrl_({ version: metaVersion });
+        const vFullRes = await fetchJSON(vFullUrl, {
+          timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
+          cacheMode: "no-cache"
+        }).catch(() => null);
+
+        const payload = vFullRes && vFullRes.data;
+
+        // GAS full 永遠 200 + data（白皮書對齊）
+        if (payload && payload.code === 200 && Array.isArray(payload.data)) {
+          const clean = sanitizeData_(payload.data);
+          safeSetCache({
+            version: metaVersion,
+            data: clean,
+            ts: now,
+            metaFailAt: 0
+          });
+          return clean;
+        }
+
+        // v-full 失敗：退回舊資料（穩）
+        if (cachedData) {
+          safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
+          return sanitizeData_(cachedData);
+        }
+      }
     }
 
-    // C) Full/Probe 抓取（A 規則）
+    // C) 沒辦法 meta（冷卻/失敗）或沒 cache：走 full
+    // - 有 cachedVersion：可用舊 v 拉一次（可能 HIT edge 舊版），至少穩定
+    // - 無 cachedVersion：首次 full 不帶 v
     const url = CONFIG.FORCE_REFRESH
-      ? buildApiUrl_({ refresh: true })
+      ? buildApiUrl_({ refresh: true }) // 只救援，不建議常開
       : (cachedVersion ? buildApiUrl_({ version: cachedVersion }) : buildApiUrl_({}));
 
     const res = await fetchJSON(url, {
@@ -244,17 +271,12 @@
 
     const payload = res && res.data;
 
-    // 304 Not Modified：續命（只更新 ts）
-    if (payload && payload.code === 304 && cachedData) {
-      safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
-      return sanitizeData_(cachedData);
-    }
-
-    // 200 OK：更新版本與資料
+    // ✅ 200 OK：更新版本與資料
     if (payload && payload.code === 200 && Array.isArray(payload.data)) {
       const clean = sanitizeData_(payload.data);
+      const newV = payload.version ? String(payload.version) : (cachedVersion || "");
       safeSetCache({
-        version: payload.version ? String(payload.version) : "",
+        version: newV,
         data: clean,
         ts: now,
         metaFailAt: 0
@@ -262,8 +284,11 @@
       return clean;
     }
 
-    // 503 Rebuilding / 其他異常：降級用舊資料
-    if (cachedData) return sanitizeData_(cachedData);
+    // 其他異常：降級用舊資料
+    if (cachedData) {
+      safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
+      return sanitizeData_(cachedData);
+    }
 
     return [];
   }
@@ -409,6 +434,13 @@
     setupViewportReveal(Array.from(widgets));
   }
 
+  // DOM ready
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
+
+  // ✅ BFCache / pageshow：不用重新整理也能重新跑一次（你剛剛測試用的方式）
+  window.addEventListener("pageshow", function () {
+    // 不強制刷新：只是讓回到頁面時可以再跑一次（若 TTL 已到就會 meta）
+    try { init(); } catch (e) {}
+  });
 })();
