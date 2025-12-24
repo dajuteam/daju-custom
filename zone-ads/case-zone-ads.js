@@ -1,159 +1,114 @@
-/**
- * Daju Zone Ads Widget V2.1
- * - meta-first
- * - localStorage TTL
- * - 同 zone 多列 = 權重
- * - 不排序、不優化順序
- */
-
 (function (window, document) {
   'use strict';
 
-  // =========================================================
-  // 1) Config
-  // =========================================================
   const API_URL = "https://daju-unified-route-api.dajuteam88.workers.dev/?type=zone_ads";
   const LS_KEY  = "DAJU_ZONE_ADS_CACHE_V21";
-  const TTL_MS  = 10 * 60 * 1000; // 10 分鐘檢查 meta
+  const TTL_MS  = 10 * 60 * 1000;
 
-  // =========================================================
-  // 2) localStorage helpers
-  // =========================================================
   function readCache() {
-    try {
-      return JSON.parse(localStorage.getItem(LS_KEY) || "null");
-    } catch (e) {
-      return null;
-    }
+    try { return JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch { return null; }
   }
-
   function writeCache(obj) {
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(obj));
-    } catch (e) {}
+    try { localStorage.setItem(LS_KEY, JSON.stringify(obj)); } catch {}
   }
 
-  // =========================================================
-  // 3) meta-first fetch
-  // =========================================================
   async function getZoneAdsData() {
     const now = Date.now();
     const cached = readCache();
 
-    // TTL 內直接用
-    if (cached && cached.ts && (now - cached.ts < TTL_MS)) {
-      return cached.data || [];
-    }
+    if (cached && cached.ts && (now - cached.ts < TTL_MS)) return cached.data || [];
 
     try {
-      // meta
-      const metaRes = await fetch(API_URL + "&meta=1", { cache: "no-store" });
-      const meta = await metaRes.json();
+      const meta = await fetch(API_URL + "&meta=1", { cache: "no-store" }).then(r => r.json());
       const latest = meta.version;
 
-      // 版本相同 → 續命
       if (cached && cached.version === latest) {
-        cached.ts = now;
-        writeCache(cached);
+        cached.ts = now; writeCache(cached);
         return cached.data || [];
       }
 
-      // 版本不同 → 拉 full（帶 v 命中 edge）
-      const fullRes = await fetch(API_URL + "&v=" + encodeURIComponent(latest));
-      const full = await fullRes.json();
-
+      const full = await fetch(API_URL + "&v=" + encodeURIComponent(latest)).then(r => r.json());
       if (full && full.code === 200 && Array.isArray(full.data)) {
-        writeCache({
-          version: latest,
-          ts: now,
-          data: full.data
-        });
+        writeCache({ version: latest, ts: now, data: full.data });
         return full.data;
       }
-
-    } catch (e) {
-      console.warn("[ZoneAds] fetch failed, fallback to cache", e);
-    }
+    } catch (e) {}
 
     return cached ? (cached.data || []) : [];
   }
 
-  // =========================================================
-  // 4) Render Engine
-  // =========================================================
-  function renderZoneAds() {
-    const container = document.getElementById("case-zone-ads");
-    if (!container) return;
-
-    const zone = String(container.getAttribute("data-case-zone") || "").trim();
-    if (!zone) return;
-
-    getZoneAdsData().then(function (allAds) {
-      if (!Array.isArray(allAds) || allAds.length === 0) return;
-
-      // ❗ 不排序、不改順序
-      const matches = allAds.filter(function (ad) {
-        return String(ad.zone || "") === zone && ad.image_url;
-      });
-
-      if (matches.length === 0) return;
-
-      // 🎯 權重邏輯：同 zone 出現次數 = 機率
-      const selected = matches[Math.floor(Math.random() * matches.length)];
-
-      inject(container, selected);
-    });
+  // ✅ 真亂數（避免 Math.random 在某些環境表現像固定）
+  function pickIndex_(len) {
+    if (!len || len <= 1) return 0;
+    if (window.crypto && crypto.getRandomValues) {
+      const buf = new Uint32Array(1);
+      crypto.getRandomValues(buf);
+      return buf[0] % len;
+    }
+    return Math.floor(Math.random() * len);
   }
 
-  // =========================================================
-  // 5) DOM inject（極簡、穩定）
-  // =========================================================
+  // ✅ 正規化 zone：去頭尾空白 + 全形空白
+  function norm_(s) {
+    return String(s || "")
+      .replace(/\u3000/g, " ")   // 全形空白 -> 半形
+      .trim();
+  }
+
   function inject(container, ad) {
     const html = `
       <style>
-        .zone-ad-wrap {
-          width: 100%;
-          margin: 16px 0;
-          opacity: 0;
-          transform: translateY(8px);
-          transition: all .6s ease;
-        }
-        .zone-ad-wrap.show {
-          opacity: 1;
-          transform: translateY(0);
-        }
-        .zone-ad-wrap img {
-          width: 100%;
-          height: auto;
-          display: block;
-          border-radius: 12px;
-        }
+        .zone-ad-wrap { width:100%; margin:16px 0; opacity:0; transform:translateY(8px); transition:all .6s ease; }
+        .zone-ad-wrap.show { opacity:1; transform:translateY(0); }
+        .zone-ad-wrap img { width:100%; height:auto; display:block; border-radius:12px; }
       </style>
-
       <div class="zone-ad-wrap" id="zone-ad-inner">
-        <a href="${ad.link_url || "javascript:void(0)"}"
-           target="_blank"
-           rel="noopener noreferrer">
+        <a href="${ad.link_url || "javascript:void(0)"}" target="_blank" rel="noopener noreferrer">
           <img src="${ad.image_url}" alt="">
         </a>
       </div>
     `;
-
     container.innerHTML = html;
-
-    requestAnimationFrame(function () {
+    requestAnimationFrame(() => {
       const el = document.getElementById("zone-ad-inner");
       if (el) el.classList.add("show");
     });
   }
 
-  // =========================================================
-  // 6) boot
-  // =========================================================
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", renderZoneAds);
-  } else {
-    renderZoneAds();
+  async function renderZoneAds(forceReroll) {
+    const container = document.getElementById("case-zone-ads");
+    if (!container) return;
+
+    const zone = norm_(container.getAttribute("data-case-zone"));
+    if (!zone) return;
+
+    const allAds = await getZoneAdsData();
+    if (!Array.isArray(allAds) || allAds.length === 0) return;
+
+    const matches = allAds.filter(ad => norm_(ad.zone) === zone && ad.image_url);
+
+    if (matches.length === 0) return;
+
+    // ✅ 每次 render 都抽一次（matches 多筆就有機率）
+    const idx = pickIndex_(matches.length);
+
+    // ✅ Debug（你要看是不是真的抽不同張）
+    // console.log("[ZoneAds]", zone, "matches=", matches.length, "pick=", idx, matches[idx]?.image_url);
+
+    inject(container, matches[idx]);
   }
+
+  // ✅ DOMContentLoaded：第一次抽
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => renderZoneAds(true));
+  } else {
+    renderZoneAds(true);
+  }
+
+  // ✅ pageshow：BFCache 返回也要重抽（你「怎麼整理都第一張」最常見就是這個）
+  window.addEventListener("pageshow", (e) => {
+    // e.persisted === true 代表從 BFCache 回來
+    renderZoneAds(true);
+  });
 
 })(window, document);
