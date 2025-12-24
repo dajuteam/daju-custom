@@ -39,7 +39,7 @@ const META_TIMEOUT_MS  = 4000;
 // ==========================================
 //  0.5) defer（延後寫入 localStorage，避免卡主執行緒）
 // ==========================================
-function defer(fn) {
+/**function defer(fn) {
   try {
     if ("requestIdleCallback" in window) {
       requestIdleCallback(() => fn(), { timeout: 1200 });
@@ -50,7 +50,7 @@ function defer(fn) {
     try { setTimeout(fn, 0); } catch {}
   }
 }
-
+ */
 // ==========================================
 //  1) CSS 注入（保留原樣式）
 // ==========================================
