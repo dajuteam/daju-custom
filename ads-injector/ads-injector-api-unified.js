@@ -1,20 +1,31 @@
 /**
- * 大橘廣告管理系統API版本 (V4.7.2 - Meta Stable + BFCache Fix + Deferred Cache Write + YT Default Lazy + Versioned Full)
- * 核心：
- * - local TTL：0 request
- * - 過期後 meta=1 探針：版本不同 => refresh=1 拉 full
- * - 自動把 version 加到 img/html/iframe 內資源 URL
+ * 大橘廣告管理系統前端 JS（V4.7.3 - Meta Stable + BFCache Fix + Deferred Cache Write + YT Default Lazy + ✅ Edge HIT Friendly）
+ * ----------------------------------------------------------------------------
+ * 核心目標（你要的效果）：
+ * 1) localStorage TTL 內：0 request（最快）
+ * 2) TTL 到期：打 meta=1（小包）確認版本
+ *    - 版本沒變：只更新 timestamp（仍 0 full request）
+ *    - 版本變了：打 full 用「?v=最新版本」✅（讓 Worker 用版本型快取，能 HIT edge）
+ * 3) ✅ 清 Cookie / 第一次來：
+ *    - 先 meta 拿最新版本
+ *    - 再用 v=最新版本 拉 full（❌ 不用 refresh=1）
+ *      => 這樣「你按過 warm」的全球節點會 HIT（不是 BYPASS）
  *
- * ✅ 保留你指定的必做優化：
- * 1) pageshow/BFCache
- * 2) writeCache 延後寫入
- * 3) bustHtmlUrls 先 check
+ * refresh 規則（很重要）：
+ * - 只有當網址帶 ?refresh 才會走 refresh=1（完全 bypass，給你 Debug/強制更新用）
+ * - 正常流程（首次 / TTL 更新）都不使用 refresh=1（才能吃到 edge cache）
+ *
+ * ✅ 保留你指定必做項目：
+ * 1) pageshow / BFCache 修補
+ * 2) writeCache 延後寫入（requestIdleCallback）
+ * 3) bustHtmlUrls 先 check（避免無 src 浪費）
  * 4) readyState 啟動
- * 5) fetchJSON 更穩
+ * 5) fetchJSON 更穩（先檢查 content-type）
  *
- * ✅ 本版關鍵修正：
- * - 「拉 full」一律帶上 version（v=...），更吻合版本型 Worker，命中率更高
- * - 首次也先 meta 拿 version，再用 v 拉 full（首讀更穩）
+ * ✅ 版本關鍵修正（跟你這次需求完全對齊）：
+ * - 首次 full：改用 v=latest（不再 refresh=1）
+ * - 版本更新 full：改用 v=latest（不再 refresh=1）
+ * - 只有你手動 ?refresh 才 refresh=1
  */
 
 // ==========================================
@@ -22,9 +33,13 @@
 // ==========================================
 const ADS_GAS_URL = "https://daju-unified-route-api.dajuteam88.workers.dev/?type=ads_injector";
 const LOCAL_CACHE_KEY = "daju_ads_cache";
+
+// ✅ 你原本是 5 分鐘：保留
 const LOCAL_CACHE_EXPIRY_MS = 5 * 60 * 1000;
+
+// fetch 超時
 const FETCH_TIMEOUT_MS = 8000;
-const META_TIMEOUT_MS = 4000;
+const META_TIMEOUT_MS  = 4000;
 
 // ==========================================
 //  0.5) defer（避免手機 main thread 卡）
@@ -42,7 +57,7 @@ function defer(fn) {
 }
 
 // ==========================================
-//  1) CSS 注入
+//  1) CSS 注入（保留原樣式）
 // ==========================================
 function injectStyles() {
   if (document.getElementById("daju-ad-manager-styles")) return;
@@ -98,11 +113,9 @@ async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
       headers: { ...(options.headers || {}), "Accept": "application/json" }
     });
 
+    // ✅ 先檢查 content-type，避免遇到 HTML 502/403 還去 res.json()
     const ct = (res.headers.get("content-type") || "").toLowerCase();
-    if (!ct.includes("application/json")) {
-      // 不是 JSON（可能是 HTML 502/403），直接回 null 降成本
-      return null;
-    }
+    if (!ct.includes("application/json")) return null;
 
     try { return await res.json(); } catch { return null; }
   } catch {
@@ -114,6 +127,9 @@ async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
 
 // ==========================================
 //  4.5) URL builder
+//  - meta: 只回版本
+//  - full: 可帶 v=...（版本型快取）
+//  - refresh=1: 只給你手動強制更新用（會 BYPASS edge）
 // ==========================================
 function buildAdsUrl({ version, meta, refresh } = {}) {
   const u = new URL(ADS_GAS_URL);
@@ -123,10 +139,12 @@ function buildAdsUrl({ version, meta, refresh } = {}) {
     return u.toString();
   }
 
+  // ✅ full：強烈建議帶 v（版本型快取）
   if (version != null && String(version).trim() !== "") {
     u.searchParams.set("v", String(version));
   }
 
+  // ⚠️ refresh=1：會讓 Worker BYPASS（不讀不寫 edge）
   if (refresh) {
     u.searchParams.set("refresh", "1");
   }
@@ -136,6 +154,7 @@ function buildAdsUrl({ version, meta, refresh } = {}) {
 
 // ==========================================
 //  4.6) Auto Cache Bust helpers
+//  - 把 version 加到 img / iframe / html 的 src 上
 // ==========================================
 function appendV(url, v) {
   if (!url || !v) return url;
@@ -157,6 +176,7 @@ function bustHtmlUrls(html, v) {
   if (!html || !v) return html;
 
   const s = String(html);
+  // ✅ 先 check，避免無 src 的 HTML 也跑 replace
   if (s.indexOf("src=") === -1 && s.indexOf("SRC=") === -1) return s;
 
   const srcRe = /(\bsrc=["'])([^"']+)(["'])/gi;
@@ -165,9 +185,14 @@ function bustHtmlUrls(html, v) {
 
 // ==========================================
 //  4.7) API calls
+//  - meta: 小包版本探針
+//  - full: ✅ 正常情況不 refresh（讓 edge 可以 HIT）
+//          只有網址帶 ?refresh 才 refresh=1（BYPASS edge）
 // ==========================================
 async function fetchAdsByClientVersion(version, bypassCache = false) {
   const url = buildAdsUrl({ version, meta: false, refresh: !!bypassCache });
+
+  // ✅ 平常用 no-cache（允許走 edge cache key），需要強制才 reload
   const fetchOptions = bypassCache ? { cache: "reload" } : { cache: "no-cache" };
   return await fetchJSON(url, fetchOptions, FETCH_TIMEOUT_MS);
 }
@@ -181,6 +206,7 @@ async function fetchMetaVersion() {
 //  5) render slot（完整可覆蓋版）
 // ==========================================
 function renderSlot(slot, adData, apiVersion) {
+  // 還原 base class，避免 class 累積
   if (slot.dataset.baseClass != null) slot.className = slot.dataset.baseClass;
   else slot.className = "";
 
@@ -189,8 +215,13 @@ function renderSlot(slot, adData, apiVersion) {
 
   if (!adData) return;
 
+  // 追加 class
   if (adData.class) {
-    String(adData.class).split(/\s+/).map(s => s.trim()).filter(Boolean).forEach(c => slot.classList.add(c));
+    String(adData.class)
+      .split(/\s+/)
+      .map(s => s.trim())
+      .filter(Boolean)
+      .forEach(c => slot.classList.add(c));
   }
 
   let hasContent = false;
@@ -258,51 +289,88 @@ function renderSlot(slot, adData, apiVersion) {
 
 // ==========================================
 //  6) Smart cache logic (Meta Stable)
-//  ✅ 本版：拉 full 一律帶 version（更吻合版本型 Worker）
+//  ✅ 這裡是本次關鍵修正：
+//     - 首次（沒 cache）：full 改用 v=latest 且 bypassCache=false（不 refresh）
+//     - TTL 後版本變：full 改用 v=latest 且 bypassCache=false（不 refresh）
+//     - 只有網址帶 ?refresh 才 refresh=1（給你強制直通用）
 // ==========================================
 async function getAdsSmart(forceRefresh) {
   const cached = readCache();
 
-  // ✅ 首次/強制：先 meta 拿版本，再帶 v 拉 full（首讀更穩）
-  if (!cached || forceRefresh) {
+  // ==========================
+  // (A) 強制刷新：只有你網址帶 ?refresh 才會走這段
+  //     => 會 refresh=1，Worker BYPASS（不讀不寫 edge）
+  //     用途：Debug / 你想立刻看新資料，不管 edge/local
+  // ==========================
+  if (forceRefresh) {
     const meta = await fetchMetaVersion();
     const latest = meta && meta.code === 200 ? String(meta.version || "0") : "";
 
-    const full = await fetchAdsByClientVersion(latest, true);
+    const full = await fetchAdsByClientVersion(latest, true); // ✅ 只有這裡 refresh=1
     if (full && full.code === 200 && full.data) {
       const v = String(full.version || latest || "0");
       writeCache({ version: v, data: full.data, timestamp: Date.now() });
       return { data: full.data, version: v };
     }
 
-    // fail => fallback cached（如果有）
+    // fail => fallback cached
     return cached ? { data: cached.data, version: String(cached.version || "0") } : null;
   }
 
-  // TTL 內：0 請求
+  // ==========================
+  // (B) 首次/清 cookie：沒有 local cache
+  // ✅ 正確作法：先 meta 拿版本，再用 v=latest 拉 full（不 refresh）
+  //     => 如果你按過 warm，full 這包會 HIT edge
+  // ==========================
+  if (!cached) {
+    const meta = await fetchMetaVersion();
+    const latest = meta && meta.code === 200 ? String(meta.version || "0") : "";
+
+    // ✅ 關鍵：不要 refresh=1，讓 edge 快取能命中
+    const full = await fetchAdsByClientVersion(latest, false);
+
+    if (full && full.code === 200 && full.data) {
+      const v = String(full.version || latest || "0");
+      writeCache({ version: v, data: full.data, timestamp: Date.now() });
+      return { data: full.data, version: v };
+    }
+
+    return null;
+  }
+
+  // ==========================
+  // (C) TTL 內：0 request
+  // ==========================
   if (cached.timestamp && (Date.now() - cached.timestamp < LOCAL_CACHE_EXPIRY_MS)) {
     return { data: cached.data, version: String(cached.version || "0") };
   }
 
-  // TTL 後：meta 檢查
+  // ==========================
+  // (D) TTL 後：打 meta 檢查版本
+  // ==========================
   const meta = await fetchMetaVersion();
   const latest = meta && meta.code === 200 ? String(meta.version || "0") : "";
   const oldV = String(cached.version || "0");
 
+  // 版本沒變：只續命 timestamp（仍然不拉 full）
   if (latest && oldV === latest) {
     writeCache({ ...cached, timestamp: Date.now() });
     return { data: cached.data, version: oldV };
   }
 
-  // ✅ 版本有變：refresh=1 拉 full（帶 latest 版本）
-  const full = await fetchAdsByClientVersion(latest, true);
+  // ==========================
+  // (E) 版本變了：✅ 用 v=latest 拉 full（不 refresh）
+  //     => 若 edge 已 warm，會 HIT；否則 MISS 一次後寫入 edge
+  // ==========================
+  const full = await fetchAdsByClientVersion(latest, false);
+
   if (full && full.code === 200 && full.data) {
     const v = String(full.version || latest || "0");
     writeCache({ version: v, data: full.data, timestamp: Date.now() });
     return { data: full.data, version: v };
   }
 
-  // fail => fallback
+  // fail => fallback 舊 cache（避免畫面空）
   writeCache({ ...cached, timestamp: Date.now() });
   return { data: cached.data, version: oldV };
 }
@@ -342,6 +410,7 @@ function setupLazyIframes() {
 async function insertAds() {
   injectStyles();
 
+  // ✅ 只有你手動帶 ?refresh 才強制直通
   const params = new URLSearchParams(window.location.search);
   const forceRefresh = params.has("refresh");
 
@@ -363,12 +432,14 @@ function bootAds() {
   try { insertAds(); } catch (e) { console.error(e); }
 }
 
+// ✅ readyState 啟動（你指定保留）
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", bootAds, { once: true });
 } else {
   bootAds();
 }
 
+// ✅ BFCache 修補（你指定保留）
 window.addEventListener("pageshow", (ev) => {
   if (ev && ev.persisted) bootAds();
 });
