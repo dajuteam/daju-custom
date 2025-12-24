@@ -1,5 +1,5 @@
 /**
- * Expert Card Widget V4.11 (Whitepaper Final - Meta Stable + V-FULL Edge Cache)
+ * Expert Card Widget V4.11-FIX (Whitepaper Final - Meta Stable + V-FULL Edge Cache)
  * ✅ Aligned with your latest GAS/Worker chain:
  * - 15min local TTL => 0 request
  * - after TTL => meta=1 (version probe)
@@ -177,6 +177,35 @@
   }
 
   // =========================================================
+  // ✅ 5.5) Payload extractor (FIX)
+  // - 讓 GAS 回傳格式不一致時也能寫入 localStorage
+  // =========================================================
+  function extractList(payload) {
+    if (!payload) return null;
+
+    // 最常見：payload.data = []
+    if (Array.isArray(payload.data)) return payload.data;
+
+    // 可能包一層：payload.data.data = []
+    if (payload.data && Array.isArray(payload.data.data)) return payload.data.data;
+
+    // 其他常見命名
+    if (Array.isArray(payload.list)) return payload.list;
+    if (Array.isArray(payload.items)) return payload.items;
+    if (Array.isArray(payload.result)) return payload.result;
+
+    return null;
+  }
+
+  function extractVersion(payload) {
+    if (!payload) return "";
+    if (payload.version) return String(payload.version);
+    if (payload.latest) return String(payload.latest);
+    if (payload.ver) return String(payload.ver);
+    return "";
+  }
+
+  // =========================================================
   // 6) Smart engine (Whitepaper Final)
   // =========================================================
   async function getExpertSmart(forceRefresh) {
@@ -193,9 +222,14 @@
       const r = await requestFull({ v: "", refresh: !!forceRefresh }).catch(() => null);
       const payload = r && r.data;
 
-      if (payload && payload.code === 200 && Array.isArray(payload.data)) {
-        writeCache({ version: String(payload.version || "0"), data: payload.data, timestamp: now, metaFailAt: 0 });
-        return payload.data;
+      if (payload && payload.code === 200) {
+        const list = extractList(payload);
+        const ver = extractVersion(payload) || "0";
+
+        if (Array.isArray(list)) {
+          writeCache({ version: String(ver), data: list, timestamp: now, metaFailAt: 0 });
+          return list;
+        }
       }
 
       // 失敗：有舊就回舊（穩）
@@ -232,9 +266,14 @@
       const r = await requestFull({ v: metaVersion, refresh: false }).catch(() => null);
       const payload = r && r.data;
 
-      if (payload && payload.code === 200 && Array.isArray(payload.data)) {
-        writeCache({ version: String(payload.version || metaVersion), data: payload.data, timestamp: now, metaFailAt: 0 });
-        return payload.data;
+      if (payload && payload.code === 200) {
+        const list = extractList(payload);
+        const ver = extractVersion(payload) || metaVersion;
+
+        if (Array.isArray(list)) {
+          writeCache({ version: String(ver), data: list, timestamp: now, metaFailAt: 0 });
+          return list;
+        }
       }
 
       // 失敗：穩定回退舊資料（並續命）
@@ -247,9 +286,14 @@
       const r = await requestFull({ v: cachedVersion, refresh: false }).catch(() => null);
       const payload = r && r.data;
 
-      if (payload && payload.code === 200 && Array.isArray(payload.data)) {
-        writeCache({ version: String(payload.version || cachedVersion), data: payload.data, timestamp: now, metaFailAt: 0 });
-        return payload.data;
+      if (payload && payload.code === 200) {
+        const list = extractList(payload);
+        const ver = extractVersion(payload) || cachedVersion;
+
+        if (Array.isArray(list)) {
+          writeCache({ version: String(ver), data: list, timestamp: now, metaFailAt: 0 });
+          return list;
+        }
       }
     }
 
