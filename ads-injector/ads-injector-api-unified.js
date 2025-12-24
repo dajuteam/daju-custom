@@ -100,7 +100,9 @@ function buildSlotMap() {
 }
 
 // ==========================================
-//  4) fetch JSON with timeout（更穩：先看 Content-Type）
+//  4) fetch JSON with timeout（✅ 更穩：不再被 Content-Type 卡死）
+//  - GAS/Worker 偶爾回 text/plain 但內容其實是 JSON
+//  - 這版：先讀 text，再嘗試 JSON.parse
 // ==========================================
 async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -113,17 +115,25 @@ async function fetchJSON(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
       headers: { ...(options.headers || {}), "Accept": "application/json" }
     });
 
-    // ✅ 先檢查 content-type，避免遇到 HTML 502/403 還去 res.json()
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-    if (!ct.includes("application/json")) return null;
+    const text = await res.text();
 
-    try { return await res.json(); } catch { return null; }
+    // ✅ 空回應直接視為失敗
+    if (!text) return null;
+
+    // ✅ 嘗試 parse（不管 content-type）
+    try {
+      return JSON.parse(text);
+    } catch {
+      // 不是 JSON（可能是 HTML 502/403）
+      return null;
+    }
   } catch {
     return null;
   } finally {
     clearTimeout(timer);
   }
 }
+
 
 // ==========================================
 //  4.5) URL builder
