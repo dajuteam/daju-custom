@@ -1,14 +1,16 @@
 /**
- * Expert Card Widget V4.10 (Meta Stable - Same Standard as Ads/CaseList)
- * ✅ Whitepaper aligned:
+ * Expert Card Widget V4.11 (Whitepaper Final - Meta Stable + V-FULL Edge Cache)
+ * ✅ Aligned with your latest GAS/Worker chain:
  * - 15min local TTL => 0 request
  * - after TTL => meta=1 (version probe)
  * - meta same => renew timestamp only (0 full download)
- * - meta diff => refresh=1 FULL (guaranteed update, bypass edge)
- * - fallback => PROBE (?v=version) 304 renew / 200 update
+ * - meta diff => V-FULL with &v=latest (HIT edge, fast)
+ * - fallback => FULL (no v) for first load / cold
+ * - hardening => meta fail cooldown, safe fetch, fallback to cached
+ *
  * ✅ A Rule (Hard):
- * - no version => FULL (NO ?v)
- * - has version => PROBE (WITH ?v)
+ * - no version => FULL (NO v)
+ * - has version => V-FULL (WITH v)
  */
 
 (function (window, document) {
@@ -17,15 +19,13 @@
   // =========================================================
   // 0) Config
   // =========================================================
-  // ✅ 共用路由：API_URL 已含 ?type=expert_card
-  // ⚠️ 因此後續加 meta/v/refresh 必須用 URL.searchParams（不能再手拼 ?meta=1）
+  // ✅ Unified Router (already has ?type=expert_card)
   const API_URL = "https://daju-unified-route-api.dajuteam88.workers.dev/?type=expert_card";
 
   const LOCAL_CACHE_KEY = "daju_expert_cache";
   const LOCAL_CACHE_EXPIRY_MS = 15 * 60 * 1000;
-  const FETCH_TIMEOUT_MS = 8000;
 
-  // meta hardening
+  const FETCH_TIMEOUT_MS = 8000;
   const META_TIMEOUT_MS = 5000;
   const META_FAIL_COOLDOWN_MS = 60 * 1000;
 
@@ -95,23 +95,24 @@
   }
 
   // =========================================================
-  // 3) refresh flag
+  // 3) flags
   // =========================================================
   function isForceRefresh() {
     try {
       const params = new URLSearchParams(window.location.search);
+      // ✅ 保留你原本的 refresh 行為：手動 debug 才會用到
       return params.has("refresh");
     } catch {
       return false;
     }
   }
-
-  // (可選) debug：網址帶 ?debug=1 時印 log（不影響正式）
   function isDebug() {
     try {
       const params = new URLSearchParams(window.location.search);
       return params.has("debug");
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }
   const DEBUG = isDebug();
   function dlog() { if (DEBUG && window.console) console.log.apply(console, arguments); }
@@ -128,7 +129,7 @@
       const res = await fetch(url, {
         cache: cacheMode || "no-cache",
         signal: controller.signal,
-        headers: { "Accept": "application/json" } // ✅ 建議：穩定拿 JSON
+        headers: { "Accept": "application/json" }
       });
 
       let data = null;
@@ -143,34 +144,24 @@
   }
 
   // =========================================================
-  // 5) Request builder (A Rule - HARD) ✅ 共用路由必改：用 URL.searchParams
+  // 5) URL builder (Unified Router safe)
   // =========================================================
-  function buildUrl({ version, refresh, meta }) {
+  function buildUrl({ meta = false, v = "", refresh = false } = {}) {
     const u = new URL(API_URL);
 
-    if (meta) {
-      u.searchParams.set("meta", "1");
-      return u.toString();
+    if (meta) u.searchParams.set("meta", "1");
+
+    // ✅ Whitepaper A Rule:
+    // - no v => FULL (no v)
+    // - has v => V-FULL (with v)
+    if (!meta && v && String(v).trim() !== "") {
+      u.searchParams.set("v", String(v));
     }
 
-    // A Rule:
-    // - no version => FULL（不帶 v）
-    // - has version => PROBE（帶 v）
-    if (version && String(version).trim() !== "") {
-      u.searchParams.set("v", String(version));
-    }
-
-    if (refresh) {
-      u.searchParams.set("refresh", "1");
-    }
+    // ✅ refresh=1 只保留給「手動 debug」用（一般流程不會走）
+    if (refresh) u.searchParams.set("refresh", "1");
 
     return u.toString();
-  }
-
-  async function requestExpert({ version, refresh }) {
-    const url = buildUrl({ version, refresh, meta: false });
-    const cacheMode = refresh ? "reload" : "no-cache";
-    return await fetchJSON(url, { cacheMode }, FETCH_TIMEOUT_MS);
   }
 
   async function requestMeta() {
@@ -178,82 +169,97 @@
     return await fetchJSON(url, { cacheMode: "no-cache" }, META_TIMEOUT_MS);
   }
 
+  async function requestFull({ v, refresh }) {
+    // refresh=true：手動 debug 才用，避免污染 edge 行為
+    const url = buildUrl({ meta: false, v: v || "", refresh: !!refresh });
+    const cacheMode = refresh ? "reload" : "no-cache";
+    return await fetchJSON(url, { cacheMode }, FETCH_TIMEOUT_MS);
+  }
+
   // =========================================================
-  // 6) Smart cache (Meta Standard)
+  // 6) Smart engine (Whitepaper Final)
   // =========================================================
   async function getExpertSmart(forceRefresh) {
     const now = Date.now();
     const cached = readCache();
+
     const cachedVersion = cached && cached.version ? String(cached.version) : "";
     const cachedTs = cached && cached.timestamp ? Number(cached.timestamp) : 0;
     const cachedData = cached ? cached.data : null;
     const metaFailAt = cached && cached.metaFailAt ? Number(cached.metaFailAt) : 0;
 
-    // A) First load OR forceRefresh => FULL
+    // (A) Cold / first load / force refresh => FULL (NO v)  (A rule)
     if (!cached || forceRefresh) {
-      const r = await requestExpert({ version: "", refresh: !!forceRefresh }).catch(() => null);
+      const r = await requestFull({ v: "", refresh: !!forceRefresh }).catch(() => null);
       const payload = r && r.data;
 
-      if (payload && payload.code === 200 && payload.data) {
+      if (payload && payload.code === 200 && Array.isArray(payload.data)) {
         writeCache({ version: String(payload.version || "0"), data: payload.data, timestamp: now, metaFailAt: 0 });
         return payload.data;
       }
-      return cached ? cached.data : null;
+
+      // 失敗：有舊就回舊（穩）
+      return cachedData || null;
     }
 
-    // B) within 15 min => 0 request
+    // (B) TTL 內：0 request
     if (cachedTs && (now - cachedTs < LOCAL_CACHE_EXPIRY_MS)) {
       return cachedData;
     }
 
-    // C) meta probe (cooldown)
+    // (C) meta probe（含 cooldown）
     let metaVersion = "";
     if (!metaFailAt || (now - metaFailAt > META_FAIL_COOLDOWN_MS)) {
       const m = await requestMeta().catch(() => null);
       metaVersion = m && m.data && m.data.version ? String(m.data.version) : "";
 
-      // meta failed => cooldown mark
       if (!metaVersion) {
+        // meta 失敗：避免一直打
         writeCache({ ...cached, metaFailAt: now });
       }
+    } else {
+      dlog("[expert] meta cooldown active");
     }
 
-    // ✅ meta changed => refresh=1 FULL (guaranteed update, bypass edge)
-    if (metaVersion && cachedVersion && metaVersion !== cachedVersion) {
-      const r = await requestExpert({ version: "", refresh: true }).catch(() => null);
+    // (D) meta same => renew timestamp only
+    if (metaVersion && cachedVersion && metaVersion === cachedVersion && cachedData) {
+      writeCache({ ...cached, timestamp: now, metaFailAt: 0 });
+      return cachedData;
+    }
+
+    // (E) meta changed => V-FULL (WITH v=latest)  ✅ HIT edge
+    if (metaVersion && metaVersion !== cachedVersion) {
+      const r = await requestFull({ v: metaVersion, refresh: false }).catch(() => null);
       const payload = r && r.data;
 
-      if (payload && payload.code === 200 && payload.data) {
+      if (payload && payload.code === 200 && Array.isArray(payload.data)) {
         writeCache({ version: String(payload.version || metaVersion), data: payload.data, timestamp: now, metaFailAt: 0 });
         return payload.data;
       }
 
-      // refresh failed => fallback old
+      // 失敗：穩定回退舊資料（並續命）
       writeCache({ ...cached, timestamp: now, metaFailAt: 0 });
       return cachedData;
     }
 
-    // D) fallback probe (A rule): ?v=oldversion (304 renew / 200 update)
-    const r = await requestExpert({ version: cachedVersion, refresh: false }).catch(() => null);
-    const payload = r && r.data;
+    // (F) meta 拿不到或空：保守做一次「v-full（舊版號）」以維持 edge 命中率
+    if (cachedVersion) {
+      const r = await requestFull({ v: cachedVersion, refresh: false }).catch(() => null);
+      const payload = r && r.data;
 
-    if (payload && payload.code === 304) {
-      writeCache({ ...cached, timestamp: now, metaFailAt: 0 });
-      return cachedData;
+      if (payload && payload.code === 200 && Array.isArray(payload.data)) {
+        writeCache({ version: String(payload.version || cachedVersion), data: payload.data, timestamp: now, metaFailAt: 0 });
+        return payload.data;
+      }
     }
 
-    if (payload && payload.code === 200 && payload.data) {
-      writeCache({ version: String(payload.version || "0"), data: payload.data, timestamp: now, metaFailAt: 0 });
-      return payload.data;
-    }
-
-    // fallback
+    // 最後 fallback：續命舊資料
     writeCache({ ...cached, timestamp: now, metaFailAt: 0 });
     return cachedData;
   }
 
   // =========================================================
-  // 7) UI System (你原本 그대로)
+  // 7) UI System（原封不動）
   // =========================================================
   const ExpertCardSystem = {
     LEVELS: {
@@ -400,6 +406,7 @@
 
     const forceRefresh = isForceRefresh();
     const data = await getExpertSmart(forceRefresh);
+
     if (data) ExpertCardSystem.run(data);
   }
 
