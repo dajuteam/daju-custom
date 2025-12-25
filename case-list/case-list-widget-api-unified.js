@@ -384,7 +384,7 @@
     let items = (dataIndex instanceof Map) ? (dataIndex.get(caseName) || []) : [];
 
     if (!items.length) {
-      container.innerHTML = '<div class="case-list-container"><div class="case-list-message">目前尚無上架物件</div></div>';
+      container.innerHTML = '<div class="case-list-container"><div class="case-list-message">- 精選物件上架中 -</div></div>';
       return;
     }
 
