@@ -1,0 +1,3 @@
+# 允許所有的 .svg 檔案被任何網站引用
+/*.svg
+  Access-Control-Allow-Origin: *
