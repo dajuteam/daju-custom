@@ -399,7 +399,7 @@
     let html = `
       <div class="case-list-container">
         <div class="case-list-header">
-          <span><img src="https://daju-assets.pages.dev/case-list/shopping-cart-tk.svg" width="28px" alt="購物車"/> 最新上架物件</span>
+          <span><svg><use href="https://daju-assets.pages.dev/assets/icons.svg#icon-cart"></use></svg> 最新上架物件</span>
           <span class="case-list-count">共 ${items.length} 筆</span>
         </div>
         <div class="case-list-ul">
