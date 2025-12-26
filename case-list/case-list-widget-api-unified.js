@@ -51,7 +51,7 @@
 
  // ✅ 購物車svg
   const iconCart = `
-    <svg class="shopping-cart-icon" viewBox="0 0 34.17 29.29" style="width: 1em; height: 1em; vertical-align: -0.125em; fill: currentColor; display: inline-block;">
+    <svg class="shopping-cart-icon" viewBox="0 0 34.17 29.29" >
       <path d="M6.17,1.57c.13.04.24.11.4.24.59.48,1.44,1.64,2.16,1.81,7.23.17,14.49.03,21.73.07,1.04.17,1.62,1.29,1.48,2.28-.85,3.48-1.59,6.99-2.43,10.48-.34,1.41-.54,3.28-2,3.88-.14.06-.38.14-.56.14s-.66,0-.66,0H9.66c-1.08-.14-1.83-.97-2.06-2.01-.53-3.84-1.03-7.69-1.57-11.53-.06-.39-.06-1.17-.22-1.49-.09-.18-.38-.36-.57-.38-.83-.12-1.9.08-2.76,0-.92-.09-1.19-1.3-1.18-1.85,0-.17.05-.47.14-.69l.01-.03c.28-.62.9-1.01,1.58-1.01h2.81c.12,0,.23.05.34.08ZM11.74,8.83c-.9.17-.96,1.34-.06,1.55h13.82c.97-.23.78-1.51-.2-1.56h-13.55ZM12.99,13.8c-.86.14-.87,1.39-.01,1.55h11.71c.94-.22.81-1.5-.15-1.56h-11.54Z"></path>
       <circle cx="10.35" cy="25.46" r="2.35"></circle>
       <circle cx="25.65" cy="25.46" r="2.35"></circle>
@@ -98,6 +98,7 @@
         margin: 0;
       }
       .case-list-header { color: #eb6100; font-size: 1.6rem; font-weight: bold; margin-bottom: 15px; padding-left: 5px; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; padding-top: 10px; }
+      .case-list-header .shopping-cart-icon { width: 1em; height: 1em; vertical-align: -0.125em; fill: currentColor; display: inline-block; }
       .case-list-count { font-size: 14px; font-weight: normal; background: #eb6100; color: #fff; padding: 2px 8px; border-radius: 12px; }
       .case-list-ul { list-style: none; padding: 0; margin: 0; border-top: 2px solid #eb6100; }
       .case-list-item { display: flex; flex-direction: column; align-items: flex-start; padding: 15px 10px; border-bottom: 1px solid #ffe6cc; transition: background-color 0.2s; }
