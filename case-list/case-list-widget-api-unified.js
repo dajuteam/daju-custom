@@ -98,7 +98,7 @@
         margin: 0;
       }
       .case-list-header { color: #eb6100; font-size: 1.6rem; font-weight: bold; margin-bottom: 15px; padding-left: 5px; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; padding-top: 10px; }
-      .case-list-header .shopping-cart-icon { width:1.25em ; height: auto; vertical-align: -0.12em; fill: currentColor; display: inline-block; } 
+      .case-list-header .shopping-cart-icon { width: 1.25em; height: auto; vertical-align: -0.12em; fill: currentColor; display: inline-block; } 
       .case-list-count { font-size: 14px; font-weight: normal; background: #eb6100; color: #fff; padding: 2px 8px; border-radius: 12px; }
       .case-list-ul { list-style: none; padding: 0; margin: 0; border-top: 2px solid #eb6100; }
       .case-list-item { display: flex; flex-direction: column; align-items: flex-start; padding: 15px 10px; border-bottom: 1px solid #ffe6cc; transition: background-color 0.2s; }
