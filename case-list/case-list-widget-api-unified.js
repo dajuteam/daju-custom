@@ -107,7 +107,7 @@
       .case-list-more-btn:hover { background-color: #fff6ee; color: #eb6100; border-color: #eb6100; }
       .case-list-more-btn .arrow-icon { display: inline-block; transition: transform 0.3s; margin-left: 5px; }
       .case-list-more-btn.is-active .arrow-icon { transform: rotate(180deg); }
-      .case-list-message { text-align: center; color: #888; padding: 20px; }
+      .case-list-message { text-align: center; color: #eb6100; padding: 20px; }
 
       @media (min-width: 992px) {
         .case-list-container { max-width: 1000px; }
@@ -384,7 +384,7 @@
     let items = (dataIndex instanceof Map) ? (dataIndex.get(caseName) || []) : [];
 
     if (!items.length) {
-      container.innerHTML = '<div class="case-list-container"><div class="case-list-message"><span style="color:#eb6100;">- 精選物件上架中 -</span></div></div>';
+      container.innerHTML = '<div class="case-list-container"><div class="case-list-message">- 精選物件上架中 -</div></div>';
       return;
     }
 
@@ -399,7 +399,7 @@
     let html = `
       <div class="case-list-container">
         <div class="case-list-header">
-          <span><i class="fas fa-cart-arrow-down"></i> 最新上架物件</span>
+          <span><i class="fas fa-cart-arrow-down"></i> <i class="fas fa-shopping-cart"></i> 最新上架物件</span>
           <span class="case-list-count">共 ${items.length} 筆</span>
         </div>
         <div class="case-list-ul">
