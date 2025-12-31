@@ -1,7 +1,7 @@
 (function() {
     // ================= 設定區 =================
     const CONFIG = {
-        password: "MDgyMQ==", 
+        password: "MjAyNg==", 
         
         targets: "article.cases .aerial-panorama-iframe, article.cases .youtube-video-iframe"
     };
