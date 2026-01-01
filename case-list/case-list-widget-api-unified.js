@@ -106,8 +106,8 @@
       .case-list-item:hover { background-color: #fff9f2; }
       .case-list-overflow { max-height: 0; overflow: hidden; opacity: 0; transition: max-height 0.5s ease-in-out, opacity 0.4s ease-in-out; }
       .case-list-overflow.is-expanded { max-height: 2000px; opacity: 1; }
-      .case-list-link { text-decoration: none; display: flex; align-items: flex-start; width: 100%; margin-bottom: 8px; position: relative; padding-right: 25px; text-align: justify; }
-      .case-list-link::after { content: "\\f35d"; font-family: "Font Awesome 5 Free"; font-weight: 900; font-size: 0.65em; color: #eb6100; opacity: 0.7; transition: opacity 0.2s; position: absolute; right: 0; flex-shrink: 0; }
+      .case-list-link { text-decoration: none; display: flex; align-items: flex-start; width: 100%; margin-bottom: 2px; position: relative; padding-right: 25px; text-align: justify; }
+      .case-list-link::after { content: "\\f35d"; font-family: "Font Awesome 5 Free"; font-weight: 900; font-size: 0.65em; color: #eb6100; opacity: 0.7; transition: opacity 0.2s; position: absolute; right: 0; top: -0.2em; flex-shrink: 0; }
       .case-list-link:hover::after { opacity: 1; }
       .case-list-dot { color: #eb6100; font-size: 20px; margin-right: 10px; line-height: 1; margin-top: 3px; flex-shrink: 0; }
       .case-list-title { font-size: 1.1rem; font-weight: 500; line-height: 1.5; color: #333; }
