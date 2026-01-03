@@ -1,34 +1,34 @@
 /**
  * =========================================================
- * DAJU Real Price Widget (Local Cache + Meta Probe + Cooldown) - v4.0
+ * DAJU Real Price Widget (Multi Containers + Local Cache + Meta Probe + Cooldown) - v4.1
  * ---------------------------------------------------------
+ * ✅ 你指定的容器抓法：抓取所有 [data-real-price]，並用 data-case-name 對應網址
+ *
  * 目的：
- * 1) 先用 localStorage 快取加速（EXPIRE_SECONDS）
+ * 1) 先用 localStorage 快取（EXPIRE_SECONDS）加速
  * 2) 本地快取過期時「才」打 meta 探針，比對版本號
  *    - version 沒變：續命本地快取（不打 full）
  *    - version 有變：打 full 更新資料
- * 3) META_COOLDOWN_MS：避免 meta 風暴（使用者一直切頁/重整）
- * 4) 全部走你的 Cloudflare Worker 統一路由
- * ---------------------------------------------------------
- * 依賴：
- * - HTML 容器需存在：<div id="real-price-container" data-case-name="..."></div>
- * - FontAwesome（可選，用於 icon）
+ * 3) META_COOLDOWN_MS：避免 meta 風暴（一直切頁/重整）
+ *
+ * 重要：
+ * - 你的 GAS 需支援：
+ *   - ?meta=1 -> { code:200, version:"xxx", ... }
+ *   - full     -> { code:200, version:"xxx", data:{ "案名":"url", ... } }
+ *   (若你的 real_price 目前 full 直接回 map，程式也有做相容)
  * =========================================================
  */
 
 (function () {
   // =========================
-  // 0) 設定區
+  // 0) 設定區（你給的 GAS + 改成秒數）
   // =========================
   const CONFIG = {
-    // 走 Worker 統一路由：type=real_price
+     // 走 Worker 統一路由：type=real_price
     GAS_API_URL: "https://daju-unified-route-api.dajuteam88.workers.dev/?type=real_price",
 
-    // 容器
-    CONTAINER_ID: "real-price-container",
-
     // localStorage key（改版號避免舊快取污染）
-    STORAGE_KEY: "real_price_local_v4",
+    STORAGE_KEY: "real_price_local_v4_1",
 
     // ✅ 本地快取有效秒數（15 分鐘）
     EXPIRE_SECONDS: 15 * 60,
@@ -40,28 +40,16 @@
     // ✅ 避免 meta 風暴：過期後也不要每次都打 meta
     META_COOLDOWN_MS: 60 * 1000,
 
-    // ✅ 你目前的 UI icon 圖
+    // icon
     ICON_URL: "https://www.dajuteam.com.tw/upload/web/images/assets/real-price-pic.png"
   };
 
   // =========================
-  // 1) 小工具：timeout fetch
-  // =========================
-  const fetchWithTimeout = async (url, timeoutMs) => {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { signal: ctrl.signal });
-      return res;
-    } finally {
-      clearTimeout(t);
-    }
-  };
-
-  // =========================
-  // 2) CSS 注入
+  // 1) CSS 注入（加防重複）
   // =========================
   const injectStyles = () => {
+    if (document.getElementById("real-price-style-v4-1")) return;
+
     const css = `
       .real-price-section {
         max-width: 100%;
@@ -184,19 +172,34 @@
         }
       }
     `;
+
     const styleSheet = document.createElement("style");
+    styleSheet.id = "real-price-style-v4-1";
     styleSheet.innerText = css;
     document.head.appendChild(styleSheet);
   };
 
   // =========================
+  // 2) timeout fetch（避免卡死）
+  // =========================
+  const fetchWithTimeout = async (url, timeoutMs) => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      return await fetch(url, { signal: ctrl.signal });
+    } finally {
+      clearTimeout(t);
+    }
+  };
+
+  // =========================
   // 3) localStorage 讀寫
-  // payload 結構：
+  // payload:
   // {
-  //   ts: number,          // 本地寫入時間
-  //   metaTs: number,      // 上次打 meta 的時間
-  //   version: string,     // meta 版本號（可空）
-  //   data: object         // case_name -> url 的 map
+  //   ts: number,         // 本地資料寫入時間（用來算 EXPIRE_SECONDS）
+  //   metaTs: number,     // 上次打 meta 的時間（用來算 META_COOLDOWN_MS）
+  //   version: string,    // meta 版本號
+  //   data: object        // { case_name: url, ... }
   // }
   // =========================
   const readLocalCache = () => {
@@ -205,6 +208,7 @@
     try {
       return JSON.parse(raw);
     } catch (e) {
+      console.warn("快取格式錯誤，刪除重抓");
       localStorage.removeItem(CONFIG.STORAGE_KEY);
       return null;
     }
@@ -214,19 +218,17 @@
     try {
       localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(payload));
     } catch (e) {
-      // localStorage 滿了也別炸
-      console.warn("localStorage write failed:", e);
+      console.warn("localStorage 寫入失敗:", e);
     }
   };
 
   // =========================
-  // 4) meta 探針（只拿版本）
-  // 走 Worker：?meta=1
-  // 期待回：
-  // { code:200, version:"xxx", ... }
+  // 4) meta 探針：只拿版本（?meta=1）
+  // 期待：
+  // { code:200, version:"xxx" }
   // =========================
   const fetchMetaVersion = async () => {
-    const metaUrl = CONFIG.GAS_API_URL + "&meta=1";
+    const metaUrl = CONFIG.GAS_API_URL + (CONFIG.GAS_API_URL.includes("?") ? "&" : "?") + "meta=1";
     const res = await fetchWithTimeout(metaUrl, CONFIG.META_TIMEOUT_MS);
     if (!res.ok) throw new Error("META HTTP " + res.status);
     const j = await res.json();
@@ -235,60 +237,67 @@
   };
 
   // =========================
-  // 5) full 取資料（拿完整 map）
-  // 走 Worker：full 永遠回 200 + data
-  // 期待回：
+  // 5) full：拿完整資料（不帶 meta）
+  // 期待（白皮書版）：
   // { code:200, version:"xxx", data:{...} }
+  // 相容（舊版）：
+  // 直接回 map {...}
   // =========================
   const fetchFullData = async () => {
     const res = await fetchWithTimeout(CONFIG.GAS_API_URL, CONFIG.FULL_TIMEOUT_MS);
     if (!res.ok) throw new Error("FULL HTTP " + res.status);
     const j = await res.json();
-    // 兼容：若你這支 real_price 直接回 object 而不是 {data:...}
-    if (j && j.code === 200 && j.data && typeof j.data === "object") return { version: String(j.version || ""), data: j.data };
-    if (j && typeof j === "object" && !("code" in j)) return { version: "", data: j }; // 舊版直接回 map
+
+    // 白皮書版
+    if (j && j.code === 200 && j.data && typeof j.data === "object") {
+      return { version: String(j.version || ""), data: j.data };
+    }
+
+    // 舊版：直接回 map（沒有 code/data）
+    if (j && typeof j === "object" && !("code" in j)) {
+      return { version: "", data: j };
+    }
+
     throw new Error("FULL BAD PAYLOAD");
   };
 
   // =========================
-  // 6) 主要取資料流程（白皮書版）
+  // 6) 取資料流程（本地快取 -> meta gating -> full）
   // =========================
   const getData = async () => {
     const now = Date.now();
     const cache = readLocalCache();
 
-    // (A) 有本地快取且未過期 -> 直接用（0 API）
+    // (A) 本地快取有效：直接用（0 API）
     if (cache && cache.ts && cache.data && (now - cache.ts < CONFIG.EXPIRE_SECONDS * 1000)) {
       return cache.data;
     }
 
-    // (B) 本地過期 -> 先做 meta gating（避免直接 full）
-    // 但要有 cooldown，避免 meta 風暴
-    const canHitMeta =
-      !cache ||
-      !cache.metaTs ||
-      (now - cache.metaTs > CONFIG.META_COOLDOWN_MS);
+    // (B) 本地過期：優先 meta gating（但要 cooldown）
+    const canHitMeta = !cache || !cache.metaTs || (now - cache.metaTs > CONFIG.META_COOLDOWN_MS);
 
     let metaVersion = "";
     if (canHitMeta) {
       try {
         metaVersion = await fetchMetaVersion();
       } catch (e) {
-        // meta 探針失敗：先用舊資料撐住（有就用），並且讓下次仍有機會再試
         console.warn("META failed:", e);
+
+        // meta 失敗：有舊資料就先用（就算過期也撐）
         if (cache && cache.data) return cache.data;
-        // 沒舊資料就只能走 full 嘗試
+
+        // 沒舊資料：只能繼續試 full
         metaVersion = "";
       }
     } else {
-      // cooldown 內：不打 meta，直接用舊資料（有就用）
+      // cooldown 內：不要一直打 meta，有舊資料就用
       if (cache && cache.data) return cache.data;
     }
 
-    // (C) meta 成功：若版本沒變 -> 續命本地快取，不打 full
+    // (C) meta OK 且版本相同：續命（不打 full）
     if (cache && cache.data && metaVersion && cache.version && metaVersion === cache.version) {
       writeLocalCache({
-        ts: now,                // ✅ 續命
+        ts: now,        // ✅ 續命
         metaTs: now,
         version: cache.version,
         data: cache.data
@@ -296,7 +305,7 @@
       return cache.data;
     }
 
-    // (D) 版本變了 or 沒版本可比 -> 打 full 更新
+    // (D) 版本不同 or 不能比：打 full 更新
     try {
       const full = await fetchFullData();
       writeLocalCache({
@@ -315,21 +324,20 @@
   };
 
   // =========================
-  // 7) render（跟你原本一樣：無網址就 disabled）
+  // 7) 渲染：塞進指定 container（你指定的 renderInto）
   // =========================
-  const render = (url) => {
-    const container = document.getElementById(CONFIG.CONTAINER_ID);
+  const renderInto = (container, url) => {
     if (!container) return;
 
     const hasUrl = !!url;
-    const titleText = hasUrl ? "查看本案最新實價登錄" : "查看本案最新實價登錄（更新中）";
+    const titleText = hasUrl ? "查看本案最新實價登錄" : "查看本案最新實價登錄(更新中)";
     const btnClass = hasUrl ? "real-price-button" : "real-price-button disabled";
     const btnHref = hasUrl ? `href="${url}" target="_blank"` : 'href="javascript:void(0)"';
     const btnIcon = hasUrl
       ? '<i class="fas fa-external-link-alt" aria-hidden="true"></i>'
       : '<i class="fas fa-tools" aria-hidden="true"></i>';
 
-    const html = `
+    container.innerHTML = `
       <div class="real-price-section">
         <div class="real-price-body">
           <div class="real-price-left">
@@ -348,31 +356,30 @@
         </div>
       </div>
     `;
-    container.innerHTML = html;
   };
 
   // =========================
-  // 8) init
+  // 8) 主程式：抓取所有 [data-real-price]
   // =========================
   const init = async () => {
-    const container = document.getElementById(CONFIG.CONTAINER_ID);
-    if (!container) return;
-
-    const caseName = container.dataset.caseName;
-    if (!caseName) {
-      console.warn("實價登錄區塊未設定 data-case-name");
-      return;
-    }
+    const containers = document.querySelectorAll("[data-real-price]");
+    if (!containers.length) return;
 
     injectStyles();
-
     const allData = await getData();
 
-    // allData: { "案名": "url", ... }
-    const key = caseName.trim();
-    const targetUrl = (allData && allData[key]) ? allData[key] : null;
+    containers.forEach((container) => {
+      const caseName = (container.dataset.caseName || "").trim();
 
-    render(targetUrl);
+      if (!caseName) {
+        console.warn("實價登錄區塊未設定 data-case-name", container);
+        renderInto(container, null);
+        return;
+      }
+
+      const targetUrl = (allData && allData[caseName]) ? allData[caseName] : null;
+      renderInto(container, targetUrl);
+    });
   };
 
   if (document.readyState === "loading") {
