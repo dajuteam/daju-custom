@@ -1,5 +1,5 @@
 /**
- * 房地產物件列表 Widget (V4.12-FIX - Ads-aligned Meta-First + Warm Compatible)
+ * 房地產物件列表 Widget (V4.12-FIX - Ads-aligned Meta-First + Warm Compatible + ✅ metaTs)
  * ----------------------------------------------------------------------------
  * ✅ 目標：跟 Ads 同款的乾淨策略（你要的 Network 形態）
  *
@@ -15,7 +15,7 @@
  *
  * 2) TTL 內：0 request
  * 3) TTL 到：
- *    - meta=1
+ *    - meta=1（✅ 有 metaTs + cooldown 防風暴）
  *    - 版本相同：只續命 ts（0 full）
  *    - 版本不同：v=latest full（HIT edge）
  *
@@ -24,11 +24,12 @@
  *    - 正常流程（首次/TTL更新）都不使用 refresh=1（才能吃到 edge）
  *
  * ✅ BFCache：
- * - 跟 Ads 同款：pageshow 只在 ev.persisted=true 才重跑
+ * - pageshow 只在 ev.persisted=true 才重跑
  *
- * ✅ 保持不變：
- * - UI/CSS/Render: SAME as V4.11
- * - One-Key localStorage cache structure: { version, data, ts, metaFailAt }
+ * ✅ Cache 結構（One-Key）：
+ * { version, data, ts, metaTs, metaFailAt }
+ * - metaTs：上次「成功/嘗試」打 meta 的時間（避免 meta 風暴）
+ * - metaFailAt：meta 失敗時間（避免 fail 後狂打）
  */
 
 (function () {
@@ -38,7 +39,13 @@
     PROBE_INTERVAL_MS: 15 * 60 * 1000,  // 15 分鐘內 0 請求
     FETCH_TIMEOUT_MS: 8000,
     META_TIMEOUT_MS: 5000,
+
+    // ✅ meta 失敗冷卻（避免一直失敗一直打）
     META_FAIL_COOLDOWN_MS: 60 * 1000,
+
+    // ✅ meta 成功後冷卻（避免 TTL 到期後使用者一直重整 -> meta 風暴）
+    META_COOLDOWN_MS: 60 * 1000,
+
     MAX_VISIBLE: 3,
 
     // 僅做救援/除錯用（不要當正常更新）
@@ -46,10 +53,9 @@
   };
 
   // ✅ One-Key Cache
-  const KEY_CACHE = "daju_case_cache"; // { version, data, ts, metaFailAt }
+  const KEY_CACHE = "daju_case_cache"; // { version, data, ts, metaTs, metaFailAt }
 
-
- // ✅ 購物車svg
+  // ✅ 購物車svg
   const iconCart = `
     <svg class="shopping-cart-icon" viewBox="0 0 34.17 29.29" >
       <path d="M6.17,1.57c.13.04.24.11.4.24.59.48,1.44,1.64,2.16,1.81,7.23.17,14.49.03,21.73.07,1.04.17,1.62,1.29,1.48,2.28-.85,3.48-1.59,6.99-2.43,10.48-.34,1.41-.54,3.28-2,3.88-.14.06-.38.14-.56.14s-.66,0-.66,0H9.66c-1.08-.14-1.83-.97-2.06-2.01-.53-3.84-1.03-7.69-1.57-11.53-.06-.39-.06-1.17-.22-1.49-.09-.18-.38-.36-.57-.38-.83-.12-1.9.08-2.76,0-.92-.09-1.19-1.3-1.18-1.85,0-.17.05-.47.14-.69l.01-.03c.28-.62.9-1.01,1.58-1.01h2.81c.12,0,.23.05.34.08ZM11.74,8.83c-.9.17-.96,1.34-.06,1.55h13.82c.97-.23.78-1.51-.2-1.56h-13.55ZM12.99,13.8c-.86.14-.87,1.39-.01,1.55h11.71c.94-.22.81-1.5-.15-1.56h-11.54Z"></path>
@@ -57,7 +63,7 @@
       <circle cx="25.65" cy="25.46" r="2.35"></circle>
     </svg>
   `;
-  
+
   // ----------------------------
   // 1. Style（原樣保留）
   // ----------------------------
@@ -79,16 +85,15 @@
     style.innerHTML = `
       /* ✅ Default hidden (no space) */
       .case-list-widget-target {
-        display: none;      /* 資料載入前不佔空間 */
+        display: none;
         width: 100%;
-        margin: 40px 0;     /* 外距由這裡控制 */
+        margin: 40px 0;
         opacity: 0;
         transition: opacity 0.4s ease;
       }
       .case-list-widget-target.is-ready { display: block; }
       .case-list-widget-target.show { opacity: 1; }
 
-      /* Widget Base (原 CSS 保留) */
       .case-list-container { 
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
         width: 100%; 
@@ -195,40 +200,43 @@
 
     if (meta) u.searchParams.set("meta", "1");
 
-    // ✅ A Rule：有 version 才帶 v
     if (!meta && version && String(version).trim() !== "") {
       u.searchParams.set("v", String(version));
     }
 
-    // ⚠️ refresh=1 只做救援/除錯（不作為正常更新）
     if (refresh) u.searchParams.set("refresh", "1");
 
     return u.toString();
   }
 
   // ----------------------------
-  // ✅ 3. Unified Data Engine (One-Key)（Ads-aligned Meta-First）
+  // ✅ 3. Unified Data Engine (One-Key)（Ads-aligned Meta-First + ✅ metaTs）
   // ----------------------------
   async function unifiedDataEngine() {
     const now = Date.now();
     const cache = safeJSONParse(localStorage.getItem(KEY_CACHE) || "{}", {});
     const cachedData = Array.isArray(cache.data) ? cache.data : null;
     const cachedVersion = cache.version ? String(cache.version) : "";
-    const cachedTs = parseInt(cache.ts || "0", 10) || 0;
-    const metaFailAt = parseInt(cache.metaFailAt || "0", 10) || 0;
+
+    const cachedTs = Number.isFinite(+cache.ts) ? (+cache.ts) : (parseInt(cache.ts || "0", 10) || 0);
+
+    // ✅ 新增：metaTs（上次打 meta 的時間）
+    const metaTs = Number.isFinite(+cache.metaTs) ? (+cache.metaTs) : (parseInt(cache.metaTs || "0", 10) || 0);
+
+    // 舊欄位：metaFailAt（meta 失敗時間）
+    const metaFailAt = Number.isFinite(+cache.metaFailAt) ? (+cache.metaFailAt) : (parseInt(cache.metaFailAt || "0", 10) || 0);
 
     // A) TTL 內：0 請求
-    if (cachedData && (now - cachedTs < CONFIG.PROBE_INTERVAL_MS)) {
+    if (cachedData && cachedTs && (now - cachedTs < CONFIG.PROBE_INTERVAL_MS)) {
       return sanitizeData_(cachedData);
     }
 
-    // ✅ 0) 手動強制刷新（僅 debug/救援）
+    // 0) 手動強制刷新（僅 debug/救援）
     let urlParamsHasRefresh = false;
     try { urlParamsHasRefresh = new URLSearchParams(location.search).has("refresh"); } catch {}
     const forceRefresh = !!CONFIG.FORCE_REFRESH || !!urlParamsHasRefresh;
 
     if (forceRefresh) {
-      // 先 meta 拿最新版本（一致）
       const metaUrl = buildApiUrl_({ meta: true });
       const metaRes = await fetchJSON(metaUrl, {
         timeoutMs: CONFIG.META_TIMEOUT_MS,
@@ -248,19 +256,18 @@
       if (payload && payload.code === 200 && Array.isArray(payload.data)) {
         const clean = sanitizeData_(payload.data);
         const newV = payload.version ? String(payload.version) : (latest || cachedVersion || "");
-        safeSetCache({ version: newV, data: clean, ts: now, metaFailAt: 0 });
+        safeSetCache({ version: newV, data: clean, ts: now, metaTs: now, metaFailAt: 0 });
         return clean;
       }
 
-      // 失敗：回舊資料（穩）
       if (cachedData) {
-        safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
+        safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaTs: now, metaFailAt: 0 });
         return sanitizeData_(cachedData);
       }
       return [];
     }
 
-    // B) cold（首次/清 localStorage）：✅ meta-first（不走 no-v）
+    // B) cold（首次/清 localStorage）：✅ meta-first
     const isCold = (!cachedData || !cachedVersion);
 
     if (isCold) {
@@ -275,7 +282,6 @@
       if (metaVersion) {
         const vFullUrl = buildApiUrl_({ version: metaVersion });
 
-        // ✅ Ads 同款：v-full 用 cache:"default"（更好吃 edge warm / HIT）
         const vFullRes = await fetchJSON(vFullUrl, {
           timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
           cacheMode: "default"
@@ -284,25 +290,29 @@
         const payload = vFullRes && vFullRes.data;
         if (payload && payload.code === 200 && Array.isArray(payload.data)) {
           const clean = sanitizeData_(payload.data);
-          safeSetCache({ version: metaVersion, data: clean, ts: now, metaFailAt: 0 });
+          safeSetCache({ version: metaVersion, data: clean, ts: now, metaTs: now, metaFailAt: 0 });
           return clean;
         }
       }
 
-      // cold 但 meta 拿不到：維持乾淨策略（不打 no-v）
-      // 有舊就回舊，沒有就空
+      // cold 但 meta 拿不到：不打 no-v
       if (cachedData) {
-        safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: now });
+        safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaTs: metaTs || 0, metaFailAt: now });
         return sanitizeData_(cachedData);
       }
       return [];
     }
 
-    // C) TTL 到：meta probe（含 cooldown）
-    let metaVersion = "";
-    const canMeta = (!metaFailAt || (now - metaFailAt > CONFIG.META_FAIL_COOLDOWN_MS));
+    // C) TTL 到：meta probe（✅ metaTs + fail cooldown）
+    // 1) 若 metaFailAt 近期失敗 => 直接跳過 meta（避免狂打）
+    const failCooldownOK = (!metaFailAt || (now - metaFailAt > CONFIG.META_FAIL_COOLDOWN_MS));
 
-    if (canMeta) {
+    // 2) 若 metaTs 近期已打過 => 也跳過 meta（避免 meta 風暴）
+    const metaCooldownOK = (!metaTs || (now - metaTs > CONFIG.META_COOLDOWN_MS));
+
+    let metaVersion = "";
+
+    if (failCooldownOK && metaCooldownOK) {
       const metaUrl = buildApiUrl_({ meta: true });
       const metaRes = await fetchJSON(metaUrl, {
         timeoutMs: CONFIG.META_TIMEOUT_MS,
@@ -311,44 +321,56 @@
 
       metaVersion = metaRes && metaRes.data && metaRes.data.version ? String(metaRes.data.version) : "";
 
-      // meta 失敗：記錄 failAt，避免一直打
+      // ✅ 不論成功/失敗，都先更新 metaTs（代表「剛剛嘗試過」）
+      //    成功：metaFailAt 清 0；失敗：metaFailAt 記 now
       if (!metaVersion) {
         safeSetCache({
           version: cachedVersion || "",
           data: cachedData || [],
           ts: cachedTs || 0,
+          metaTs: now,
           metaFailAt: now
         });
-      }
+      } else {
+        // ✅ meta 成功：先落 metaTs（failAt 清除）
+        safeSetCache({
+          version: cachedVersion || "",
+          data: cachedData || [],
+          ts: cachedTs || 0,
+          metaTs: now,
+          metaFailAt: 0
+        });
 
-      // ✅ 版本相同：只續命（0 full）
-      if (metaVersion && metaVersion === cachedVersion && cachedData) {
-        safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
-        return sanitizeData_(cachedData);
-      }
-
-      // ✅ 版本不同：v-full（HIT edge）
-      if (metaVersion && metaVersion !== cachedVersion) {
-        const vFullUrl = buildApiUrl_({ version: metaVersion });
-
-        // ✅ Ads 同款：v-full 用 cache:"default"
-        const vFullRes = await fetchJSON(vFullUrl, {
-          timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
-          cacheMode: "default"
-        }).catch(() => null);
-
-        const payload = vFullRes && vFullRes.data;
-
-        if (payload && payload.code === 200 && Array.isArray(payload.data)) {
-          const clean = sanitizeData_(payload.data);
-          safeSetCache({ version: metaVersion, data: clean, ts: now, metaFailAt: 0 });
-          return clean;
+        // ✅ 版本相同：只續命（0 full）
+        if (metaVersion === cachedVersion && cachedData) {
+          safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaTs: now, metaFailAt: 0 });
+          return sanitizeData_(cachedData);
         }
 
-        // 失敗：回舊（穩）+ 續命
-        safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
-        return sanitizeData_(cachedData);
+        // ✅ 版本不同：v-full（HIT edge）
+        if (metaVersion !== cachedVersion) {
+          const vFullUrl = buildApiUrl_({ version: metaVersion });
+          const vFullRes = await fetchJSON(vFullUrl, {
+            timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
+            cacheMode: "default"
+          }).catch(() => null);
+
+          const payload = vFullRes && vFullRes.data;
+
+          if (payload && payload.code === 200 && Array.isArray(payload.data)) {
+            const clean = sanitizeData_(payload.data);
+            safeSetCache({ version: metaVersion, data: clean, ts: now, metaTs: now, metaFailAt: 0 });
+            return clean;
+          }
+
+          // full 失敗：回舊 + 續命
+          safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaTs: now, metaFailAt: 0 });
+          return sanitizeData_(cachedData);
+        }
       }
+    } else {
+      // meta cooldown 中：不打 meta，直接走 fallback（保持 0 request / 或輕量 v-full）
+      // 這裡不動 cache（避免一直改 ts 造成看起來一直續命）
     }
 
     // D) meta 拿不到（冷卻/失敗）：保守用「舊版 v-full」拉一次（維持 edge 命中率）
@@ -364,13 +386,13 @@
       if (payload && payload.code === 200 && Array.isArray(payload.data)) {
         const clean = sanitizeData_(payload.data);
         const newV = payload.version ? String(payload.version) : cachedVersion;
-        safeSetCache({ version: newV, data: clean, ts: now, metaFailAt: 0 });
+        safeSetCache({ version: newV, data: clean, ts: now, metaTs: metaTs || 0, metaFailAt: 0 });
         return clean;
       }
     }
 
-    // 最後 fallback：續命舊資料
-    safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaFailAt: 0 });
+    // 最後 fallback：續命舊資料（不改 metaTs，避免誤判）
+    safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaTs: metaTs || 0, metaFailAt: 0 });
     return sanitizeData_(cachedData);
   }
 
