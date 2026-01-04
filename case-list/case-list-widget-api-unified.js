@@ -1,7 +1,7 @@
 /**
- * 房地產物件列表 Widget (V4.12-FIX - Ads-aligned Meta-First + Warm Compatible + ✅ metaTs)
+ * 房地產物件列表 Widget (V4.12-FIX - Ads-style Config Naming + Meta-First + Warm Compatible)
  * ----------------------------------------------------------------------------
- * ✅ 目標：跟 Ads 同款的乾淨策略（你要的 Network 形態）
+ * ✅ 目標：跟 Ads 同款的乾淨策略（Network 形態固定）
  *
  * Network 形態（正常狀態只會出現這兩種）：
  *   - ?type=case_list&meta=1
@@ -33,27 +33,32 @@
  */
 
 (function () {
-  const CONFIG = {
-    API_URL: "https://daju-unified-route-api.dajuteam88.workers.dev/?type=case_list",
+  // ==========================================
+  //  0) 全域設定（Ads 同款排版 + 命名）
+  // ==========================================
+  const CASE_GAS_URL = "https://daju-unified-route-api.dajuteam88.workers.dev/?type=case_list";
+  const LOCAL_CACHE_KEY = "daju_case_cache";
 
-    PROBE_INTERVAL_MS: 15 * 60 * 1000,  // 15 分鐘內 0 請求
-    FETCH_TIMEOUT_MS: 8000,
-    META_TIMEOUT_MS: 5000,
+  // ✅ localStorage 的有效時間（TTL 內完全 0 request）
+  const LOCAL_CACHE_EXPIRY_MS = 15 * 60 * 1000; // 15 min
 
-    // ✅ meta 失敗冷卻（避免一直失敗一直打）
-    META_FAIL_COOLDOWN_MS: 60 * 1000,
+  // ✅ 避免 meta 風暴（TTL 過期後也不要每次都打 meta）
+  // - 只要剛打過 meta（成功或失敗），cooldown 內就不再打 meta
+  const META_COOLDOWN_MS = 60 * 1000; // 60 sec
 
-    // ✅ meta 成功後冷卻（避免 TTL 到期後使用者一直重整 -> meta 風暴）
-    META_COOLDOWN_MS: 60 * 1000,
+  // ✅ meta 連續失敗時的額外保護（更抗風暴）
+  // - 若 meta endpoint 持續掛掉，避免 cooldown 到就又立刻重打造成撞牆風暴
+  const META_FAIL_COOLDOWN_MS = 60 * 1000; // 60 sec
 
-    MAX_VISIBLE: 3,
+  // ✅ fetch 超時保護
+  const FETCH_TIMEOUT_MS = 8000;
+  const META_TIMEOUT_MS = 5000;
 
-    // 僅做救援/除錯用（不要當正常更新）
-    FORCE_REFRESH: false
-  };
+  // 顯示設定
+  const MAX_VISIBLE = 3;
 
-  // ✅ One-Key Cache
-  const KEY_CACHE = "daju_case_cache"; // { version, data, ts, metaTs, metaFailAt }
+  // 僅做救援/除錯用（不要當正常更新）
+  const FORCE_REFRESH = false;
 
   // ✅ 購物車svg
   const iconCart = `
@@ -138,14 +143,15 @@
   }
 
   // ----------------------------
-  // 2. Utils（原樣保留 + fetchJSON 升級）
+  // 2. Utils（原樣保留）
   // ----------------------------
   function safeJSONParse(str, fallback) {
     try { return JSON.parse(str); } catch (e) { return fallback; }
   }
+
   function safeSetCache(obj) {
     try {
-      localStorage.setItem(KEY_CACHE, JSON.stringify(obj));
+      localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(obj));
       return true;
     } catch (e) {
       return false;
@@ -196,7 +202,7 @@
   // 2.5 URL Builder（✅ 共用路由必備：避免兩個 ?）
   // ----------------------------
   function buildApiUrl_({ meta = false, version = "", refresh = false } = {}) {
-    const u = new URL(CONFIG.API_URL);
+    const u = new URL(CASE_GAS_URL);
 
     if (meta) u.searchParams.set("meta", "1");
 
@@ -210,36 +216,36 @@
   }
 
   // ----------------------------
-  // ✅ 3. Unified Data Engine (One-Key)（Ads-aligned Meta-First + ✅ metaTs）
+  // ✅ 3. Unified Data Engine (One-Key)
   // ----------------------------
   async function unifiedDataEngine() {
     const now = Date.now();
-    const cache = safeJSONParse(localStorage.getItem(KEY_CACHE) || "{}", {});
+    const cache = safeJSONParse(localStorage.getItem(LOCAL_CACHE_KEY) || "{}", {});
     const cachedData = Array.isArray(cache.data) ? cache.data : null;
     const cachedVersion = cache.version ? String(cache.version) : "";
 
     const cachedTs = Number.isFinite(+cache.ts) ? (+cache.ts) : (parseInt(cache.ts || "0", 10) || 0);
 
-    // ✅ 新增：metaTs（上次打 meta 的時間）
+    // ✅ metaTs：上次打 meta 的時間（成功或失敗都會更新）
     const metaTs = Number.isFinite(+cache.metaTs) ? (+cache.metaTs) : (parseInt(cache.metaTs || "0", 10) || 0);
 
-    // 舊欄位：metaFailAt（meta 失敗時間）
+    // ✅ metaFailAt：meta 失敗時間（fail 會記 now）
     const metaFailAt = Number.isFinite(+cache.metaFailAt) ? (+cache.metaFailAt) : (parseInt(cache.metaFailAt || "0", 10) || 0);
 
     // A) TTL 內：0 請求
-    if (cachedData && cachedTs && (now - cachedTs < CONFIG.PROBE_INTERVAL_MS)) {
+    if (cachedData && cachedTs && (now - cachedTs < LOCAL_CACHE_EXPIRY_MS)) {
       return sanitizeData_(cachedData);
     }
 
     // 0) 手動強制刷新（僅 debug/救援）
     let urlParamsHasRefresh = false;
     try { urlParamsHasRefresh = new URLSearchParams(location.search).has("refresh"); } catch {}
-    const forceRefresh = !!CONFIG.FORCE_REFRESH || !!urlParamsHasRefresh;
+    const forceRefresh = !!FORCE_REFRESH || !!urlParamsHasRefresh;
 
     if (forceRefresh) {
       const metaUrl = buildApiUrl_({ meta: true });
       const metaRes = await fetchJSON(metaUrl, {
-        timeoutMs: CONFIG.META_TIMEOUT_MS,
+        timeoutMs: META_TIMEOUT_MS,
         cacheMode: "no-store"
       }).catch(() => null);
 
@@ -247,7 +253,7 @@
 
       const fullUrl = buildApiUrl_({ version: latest || cachedVersion || "", refresh: true });
       const fullRes = await fetchJSON(fullUrl, {
-        timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
+        timeoutMs: FETCH_TIMEOUT_MS,
         cacheMode: "reload"
       }).catch(() => null);
 
@@ -267,13 +273,13 @@
       return [];
     }
 
-    // B) cold（首次/清 localStorage）：✅ meta-first
+    // B) cold（首次/清 localStorage）：meta-first
     const isCold = (!cachedData || !cachedVersion);
 
     if (isCold) {
       const metaUrl = buildApiUrl_({ meta: true });
       const metaRes = await fetchJSON(metaUrl, {
-        timeoutMs: CONFIG.META_TIMEOUT_MS,
+        timeoutMs: META_TIMEOUT_MS,
         cacheMode: "no-store"
       }).catch(() => null);
 
@@ -283,7 +289,7 @@
         const vFullUrl = buildApiUrl_({ version: metaVersion });
 
         const vFullRes = await fetchJSON(vFullUrl, {
-          timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
+          timeoutMs: FETCH_TIMEOUT_MS,
           cacheMode: "default"
         }).catch(() => null);
 
@@ -303,26 +309,26 @@
       return [];
     }
 
-    // C) TTL 到：meta probe（✅ metaTs + fail cooldown）
-    // 1) 若 metaFailAt 近期失敗 => 直接跳過 meta（避免狂打）
-    const failCooldownOK = (!metaFailAt || (now - metaFailAt > CONFIG.META_FAIL_COOLDOWN_MS));
+    // C) TTL 到：meta probe（metaTs + fail cooldown）
+    // 1) 若 metaFailAt 近期失敗 => 直接跳過 meta（避免撞牆風暴）
+    const failCooldownOK = (!metaFailAt || (now - metaFailAt > META_FAIL_COOLDOWN_MS));
 
     // 2) 若 metaTs 近期已打過 => 也跳過 meta（避免 meta 風暴）
-    const metaCooldownOK = (!metaTs || (now - metaTs > CONFIG.META_COOLDOWN_MS));
+    const metaCooldownOK = (!metaTs || (now - metaTs > META_COOLDOWN_MS));
 
     let metaVersion = "";
 
     if (failCooldownOK && metaCooldownOK) {
       const metaUrl = buildApiUrl_({ meta: true });
       const metaRes = await fetchJSON(metaUrl, {
-        timeoutMs: CONFIG.META_TIMEOUT_MS,
+        timeoutMs: META_TIMEOUT_MS,
         cacheMode: "no-store"
       }).catch(() => null);
 
       metaVersion = metaRes && metaRes.data && metaRes.data.version ? String(metaRes.data.version) : "";
 
-      // ✅ 不論成功/失敗，都先更新 metaTs（代表「剛剛嘗試過」）
-      //    成功：metaFailAt 清 0；失敗：metaFailAt 記 now
+      // 不論成功/失敗，都先更新 metaTs（代表「剛剛嘗試過」）
+      // 成功：metaFailAt 清 0；失敗：metaFailAt 記 now
       if (!metaVersion) {
         safeSetCache({
           version: cachedVersion || "",
@@ -332,7 +338,7 @@
           metaFailAt: now
         });
       } else {
-        // ✅ meta 成功：先落 metaTs（failAt 清除）
+        // meta 成功：先落 metaTs（failAt 清除）
         safeSetCache({
           version: cachedVersion || "",
           data: cachedData || [],
@@ -341,17 +347,17 @@
           metaFailAt: 0
         });
 
-        // ✅ 版本相同：只續命（0 full）
+        // 版本相同：只續命（0 full）
         if (metaVersion === cachedVersion && cachedData) {
           safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaTs: now, metaFailAt: 0 });
           return sanitizeData_(cachedData);
         }
 
-        // ✅ 版本不同：v-full（HIT edge）
+        // 版本不同：v-full（HIT edge）
         if (metaVersion !== cachedVersion) {
           const vFullUrl = buildApiUrl_({ version: metaVersion });
           const vFullRes = await fetchJSON(vFullUrl, {
-            timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
+            timeoutMs: FETCH_TIMEOUT_MS,
             cacheMode: "default"
           }).catch(() => null);
 
@@ -369,15 +375,15 @@
         }
       }
     } else {
-      // meta cooldown 中：不打 meta，直接走 fallback（保持 0 request / 或輕量 v-full）
+      // cooldown 內：不要打 meta，直接走 fallback
       // 這裡不動 cache（避免一直改 ts 造成看起來一直續命）
     }
 
-    // D) meta 拿不到（冷卻/失敗）：保守用「舊版 v-full」拉一次（維持 edge 命中率）
+    // D) meta 拿不到（冷卻/失敗）：保守用「舊版 v-full」拉一次
     if (cachedVersion) {
       const url = buildApiUrl_({ version: cachedVersion });
       const res = await fetchJSON(url, {
-        timeoutMs: CONFIG.FETCH_TIMEOUT_MS,
+        timeoutMs: FETCH_TIMEOUT_MS,
         cacheMode: "default"
       }).catch(() => null);
 
@@ -454,10 +460,10 @@
         </div>`;
     };
 
-    items.slice(0, CONFIG.MAX_VISIBLE).forEach(it => (html += gen(it)));
+    items.slice(0, MAX_VISIBLE).forEach(it => (html += gen(it)));
 
-    if (items.length > CONFIG.MAX_VISIBLE) {
-      const hidden = items.slice(CONFIG.MAX_VISIBLE);
+    if (items.length > MAX_VISIBLE) {
+      const hidden = items.slice(MAX_VISIBLE);
       const overflowId = `overflow-${++_overflowSeq}`;
       html += `<div class="case-list-overflow" id="${overflowId}">`;
       hidden.forEach(it => (html += gen(it)));
