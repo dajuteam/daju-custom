@@ -1,5 +1,5 @@
 /**
- * 房地產物件列表 Widget (V4.14-STABLE - Ads-Style Unified + MetaTs Cooldown ONLY)
+ * 房地產物件列表 Widget (V4.14.1-STABLE - Ads-Style Unified + MetaTs Cooldown ONLY)
  * ----------------------------------------------------------------------------
  * ✅ 目標：完全對齊 Ads「最乾淨策略」（穩定、低 request、行為可預期）
  *
@@ -142,14 +142,14 @@
   // 2. Utils（原樣保留）
   // ----------------------------
   function safeJSONParse(str, fallback) {
-    try { return JSON.parse(str); } catch (e) { return fallback; }
+    try { return JSON.parse(str); } catch { return fallback; }
   }
 
   function safeSetCache(obj) {
     try {
       localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(obj));
       return true;
-    } catch (e) {
+    } catch {
       return false;
     }
   }
@@ -158,6 +158,7 @@
   async function fetchJSON(url, { timeoutMs, cacheMode }) {
     const controller = new AbortController();
     const tid = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
       const res = await fetch(url, {
         signal: controller.signal,
@@ -167,10 +168,10 @@
 
       const text = await res.text();
       let data = null;
-      try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
+      try { data = text ? JSON.parse(text) : null; } catch { data = null; }
 
       return { ok: res.ok, status: res.status, data };
-    } catch (e) {
+    } catch {
       return { ok: false, status: 0, data: null };
     } finally {
       clearTimeout(tid);
@@ -239,14 +240,24 @@
       const metaRes = await fetchJSON(metaUrl, { timeoutMs: META_TIMEOUT_MS, cacheMode: "no-store" }).catch(() => null);
       const latest = metaRes && metaRes.data && metaRes.data.version ? String(metaRes.data.version) : "";
 
-      const fullUrl = buildApiUrl_({ version: latest || cachedVersion || "", refresh: true });
+      // ✅ 修正：forceRefresh 也不打 no-v
+      const vForRefresh = (latest || cachedVersion || "").trim();
+      if (!vForRefresh) {
+        if (cachedData) {
+          safeSetCache({ version: cachedVersion, data: cachedData, ts: now, metaTs: now });
+          return cachedData;
+        }
+        return [];
+      }
+
+      const fullUrl = buildApiUrl_({ version: vForRefresh, refresh: true });
       const fullRes = await fetchJSON(fullUrl, { timeoutMs: FETCH_TIMEOUT_MS, cacheMode: "reload" }).catch(() => null);
 
       const payload = fullRes && fullRes.data;
 
       if (payload && payload.code === 200 && Array.isArray(payload.data)) {
         const clean = sanitizeData_(payload.data);
-        const newV = payload.version ? String(payload.version) : (latest || cachedVersion || "");
+        const newV = payload.version ? String(payload.version) : vForRefresh;
         safeSetCache({ version: newV, data: clean, ts: now, metaTs: now });
         return clean;
       }
@@ -478,7 +489,7 @@
   // ✅ BFCache / pageshow：跟 Ads 同款（避免初次載入跑兩次）
   window.addEventListener("pageshow", function (ev) {
     if (ev && ev.persisted) {
-      try { init(); } catch (e) {}
+      try { init(); } catch {}
     }
   });
 })();
