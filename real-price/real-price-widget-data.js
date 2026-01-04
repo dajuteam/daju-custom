@@ -1,27 +1,23 @@
 /**
  * =========================================================
- * DAJU Real Price Widget (Multi Containers + Local Cache + Meta Probe + Cooldown) - v4.2.1 (Ads-aligned)
+ * DAJU Real Price Widget (Ads-aligned / MetaTs ONLY) - v4.2.2
  * ---------------------------------------------------------
  * ✅ 容器抓法：抓取所有 [data-real-price]，並用 data-case-name 對應網址
  *
- * 流程：
- * 1) localStorage 快取（EXPIRE_SECONDS）
- * 2) 本地快取過期時才打 meta=1 探針拿 version（含 cooldown 防風暴）
- *    - cooldown 內：不打 meta，直接用舊資料並 ✅ 續命 ts（Ads 同款）
- *    - meta 失敗：有舊資料就用，並 ✅ 更新 metaTs + 續命 ts（Ads 同款）
+ * 流程（對齊 Ads 方案一）：
+ * 1) TTL 內：0 request（直接用 localStorage）
+ * 2) TTL 到：
+ *    - meta=1 探針拿 version（受 metaTs cooldown 控制）
+ *    - cooldown 內：0 request，直接用舊資料並續命 ts（Ads 同款）
+ *    - meta 失敗：有舊資料就用，並更新 metaTs + 續命 ts（Ads 同款）
  *    - version 沒變：續命（不打 full）
- *    - version 有變：full 會帶 v=version 更新
+ *    - version 有變：full?v=version 更新
  *
  * Cache payload（One-Key）:
- * {
- *   ts: number,
- *   metaTs: number,
- *   version: string,
- *   data: object
- * }
+ * { ts, metaTs, version, data }
  *
- * 重要：你的 Worker/GAS 需支援：
- * - ?meta=1 -> { code:200, version:"xxx", ... }
+ * 重要：Worker/GAS 需支援：
+ * - ?meta=1 -> { code:200, version:"xxx" }
  * - full?v=xxx -> { code:200, version:"xxx", data:{ "案名":"url" } }
  *   (若 full 直接回 map，程式也相容)
  * =========================================================
@@ -32,23 +28,19 @@
   // 0) 設定區
   // =========================
   const CONFIG = {
-    // ✅ 走 Worker 統一路由：type=real_price
     GAS_API_URL: "https://daju-unified-route-api.dajuteam88.workers.dev/?type=real_price",
-
-    // ✅ 只留一個 localStorage key（你指定）
     STORAGE_KEY: "daju_real_price_cache",
 
-    // ✅ 本地快取有效秒數（15 分鐘）
+    // ✅ 先用 15 分鐘測試（穩定後你再自行拉長）
     EXPIRE_SECONDS: 15 * 60,
 
-    // ✅ timeout（避免卡死）
+    // ✅ timeout
     META_TIMEOUT_MS: 3000,
     FULL_TIMEOUT_MS: 5000,
 
-    // ✅ 避免 meta 風暴
+    // ✅ 避免 meta 風暴（Ads 同款：只有 metaTs）
     META_COOLDOWN_MS: 60 * 1000,
 
-    // icon
     ICON_URL: "https://www.dajuteam.com.tw/upload/web/images/assets/real-price-pic.png"
   };
 
@@ -173,27 +165,50 @@
   };
 
   // =========================
-  // 2) timeout fetch
+  // 2) fetch JSON（Ads 同款：text -> JSON.parse）+ timeout
   // =========================
-  const fetchWithTimeout = async (url, timeoutMs) => {
+  const fetchJSON = async (url, timeoutMs, cacheMode) => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
+
     try {
-      return await fetch(url, { signal: ctrl.signal, credentials: "omit" });
+      const res = await fetch(url, {
+        signal: ctrl.signal,
+        cache: cacheMode || "no-cache",
+        headers: { "Accept": "application/json" },
+        credentials: "omit"
+      });
+
+      const text = await res.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+
+      return { ok: res.ok, status: res.status, data };
+    } catch {
+      return { ok: false, status: 0, data: null };
     } finally {
       clearTimeout(t);
     }
   };
 
   // =========================
-  // 3) localStorage 讀寫（只存一把）
-  // payload:
-  // {
-  //   ts: number,       // 本地資料寫入時間（算 EXPIRE_SECONDS）
-  //   metaTs: number,   // 上次打 meta 的時間（算 META_COOLDOWN_MS）
-  //   version: string,  // 版本號
-  //   data: object      // { case_name: url, ... }
-  // }
+  // 3) URL Builder（對齊 Ads/Case）
+  // =========================
+  const buildApiUrl_ = ({ meta = false, version = "" } = {}) => {
+    const u = new URL(CONFIG.GAS_API_URL);
+    if (meta) {
+      u.searchParams.set("meta", "1");
+      return u.toString();
+    }
+    if (version && String(version).trim() !== "") {
+      u.searchParams.set("v", String(version));
+    }
+    return u.toString();
+  };
+
+  // =========================
+  // 4) localStorage 讀寫（One-Key）
+  // payload: { ts, metaTs, version, data }
   // =========================
   const readLocalCache = () => {
     const raw = localStorage.getItem(CONFIG.STORAGE_KEY);
@@ -202,46 +217,38 @@
       const j = JSON.parse(raw);
       if (!j || typeof j !== "object") return null;
       return j;
-    } catch (e) {
-      console.warn("快取格式錯誤，刪除重抓");
+    } catch {
       localStorage.removeItem(CONFIG.STORAGE_KEY);
       return null;
     }
   };
 
   const writeLocalCache = (payload) => {
-    try {
-      localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(payload));
-    } catch (e) {
-      console.warn("localStorage 寫入失敗:", e);
-    }
+    try { localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(payload)); }
+    catch {}
   };
 
   // =========================
-  // 4) meta 探針：?meta=1
+  // 5) meta 探針
   // =========================
   const fetchMetaVersion = async () => {
-    const metaUrl = CONFIG.GAS_API_URL + (CONFIG.GAS_API_URL.includes("?") ? "&" : "?") + "meta=1";
-    const res = await fetchWithTimeout(metaUrl, CONFIG.META_TIMEOUT_MS);
-    if (!res.ok) throw new Error("META HTTP " + res.status);
+    const metaUrl = buildApiUrl_({ meta: true });
+    const r = await fetchJSON(metaUrl, CONFIG.META_TIMEOUT_MS, "no-store");
+    const j = r && r.data;
 
-    const j = await res.json();
-    if (!j || j.code !== 200 || !j.version) throw new Error("META BAD PAYLOAD");
-    return String(j.version);
+    if (j && j.code === 200 && j.version) return String(j.version);
+    return "";
   };
 
   // =========================
-  // 5) full：拿完整資料（✅ 支援帶 v=version）
+  // 6) full（一定帶 v；不打 no-v）
   // =========================
   const fetchFullData = async (version) => {
-    const fullUrl = version
-      ? (CONFIG.GAS_API_URL + (CONFIG.GAS_API_URL.includes("?") ? "&" : "?") + "v=" + encodeURIComponent(version))
-      : CONFIG.GAS_API_URL;
+    if (!version) return null; // ✅ 不打 no-v（對齊白皮書：避免不可預期）
+    const fullUrl = buildApiUrl_({ version });
 
-    const res = await fetchWithTimeout(fullUrl, CONFIG.FULL_TIMEOUT_MS);
-    if (!res.ok) throw new Error("FULL HTTP " + res.status);
-
-    const j = await res.json();
+    const r = await fetchJSON(fullUrl, CONFIG.FULL_TIMEOUT_MS, "default");
+    const j = r && r.data;
 
     // 白皮書版：{code, version, data}
     if (j && j.code === 200 && j.data && typeof j.data === "object") {
@@ -253,106 +260,83 @@
       return { version: String(version || ""), data: j };
     }
 
-    throw new Error("FULL BAD PAYLOAD");
+    return null;
   };
 
   // =========================
-  // 6) 取資料流程（local -> meta gating -> full?v=version）
+  // 7) 取資料流程（Ads 方案一）
   // =========================
   const getData = async () => {
     const now = Date.now();
     const cache = readLocalCache();
 
-    // (A) 本地快取有效：直接用（0 API）
-    if (cache && cache.ts && cache.data && (now - cache.ts < CONFIG.EXPIRE_SECONDS * 1000)) {
-      return cache.data;
+    const cacheTs = cache && cache.ts ? Number(cache.ts) : 0;
+    const cacheMetaTs = cache && cache.metaTs ? Number(cache.metaTs) : 0;
+    const cacheVersion = cache && cache.version ? String(cache.version) : "";
+    const cacheData = cache && cache.data && typeof cache.data === "object" ? cache.data : null;
+
+    // (A) TTL 內：0 request
+    if (cacheData && cacheTs && (now - cacheTs < CONFIG.EXPIRE_SECONDS * 1000)) {
+      return cacheData;
     }
 
-    // (B) 本地過期：先 meta gating（但要 cooldown）
-    const lastMetaTs = cache && cache.metaTs ? Number(cache.metaTs) : 0;
-    const canHitMeta = !lastMetaTs || (now - lastMetaTs > CONFIG.META_COOLDOWN_MS);
+    // (B) TTL 到：meta cooldown gating
+    const canHitMeta = (!cacheMetaTs) || (now - cacheMetaTs > CONFIG.META_COOLDOWN_MS);
 
-    // ✅ cooldown 內：不打 meta，直接用舊資料並「續命 ts」（Ads 同款）
+    // cooldown 內：0 request，直接用舊資料並續命 ts（Ads 同款）
     if (!canHitMeta) {
-      if (cache && cache.data) {
-        writeLocalCache({
-          ts: now,
-          metaTs: lastMetaTs || 0,
-          version: cache.version || "",
-          data: cache.data
-        });
-        return cache.data;
+      if (cacheData) {
+        writeLocalCache({ ts: now, metaTs: cacheMetaTs || 0, version: cacheVersion, data: cacheData });
+        return cacheData;
       }
-      // 沒 cache 只能繼續走 full（不帶 v）
+      // 沒 cache：不打 no-v，直接回 null（讓畫面顯示更新中）
+      return null;
     }
 
-    let metaVersion = "";
+    // (C) 可以打 meta
+    const metaVersion = await fetchMetaVersion();
 
-    // ✅ 可以打 meta：不論成功/失敗，都視為一次嘗試（要更新 metaTs）
-    if (canHitMeta) {
-      try {
-        metaVersion = await fetchMetaVersion();
-      } catch (e) {
-        console.warn("META failed:", e);
-
-        // meta 失敗：有舊資料就先用（並更新 metaTs + 續命 ts，Ads 同款）
-        if (cache && cache.data) {
-          writeLocalCache({
-            ts: now,
-            metaTs: now,
-            version: cache.version || "",
-            data: cache.data
-          });
-          return cache.data;
-        }
-
-        // 沒舊資料：只能試 full（不帶 v）
-        metaVersion = "";
+    // meta 失敗：有舊用舊 + 更新 metaTs + 續命 ts（Ads 同款）
+    if (!metaVersion) {
+      if (cacheData) {
+        writeLocalCache({ ts: now, metaTs: now, version: cacheVersion, data: cacheData });
+        return cacheData;
       }
+      // 沒舊資料：不打 no-v
+      writeLocalCache({ ts: now, metaTs: now, version: "", data: {} });
+      return null;
     }
 
-    // (C) meta OK 且版本相同：續命（不打 full）
-    if (cache && cache.data && metaVersion && cache.version && metaVersion === cache.version) {
+    // meta OK 且版本相同：續命（不打 full）
+    if (cacheData && cacheVersion && metaVersion === cacheVersion) {
+      writeLocalCache({ ts: now, metaTs: now, version: cacheVersion, data: cacheData });
+      return cacheData;
+    }
+
+    // 版本不同：打 full?v=metaVersion
+    const full = await fetchFullData(metaVersion);
+    if (full && full.data) {
       writeLocalCache({
         ts: now,
-        metaTs: now, // ✅ 剛打過 meta
-        version: cache.version,
-        data: cache.data
-      });
-      return cache.data;
-    }
-
-    // (D) 版本不同 or 不能比：打 full（✅ 帶 v=metaVersion）
-    try {
-      const full = await fetchFullData(metaVersion);
-
-      writeLocalCache({
-        ts: now,
-        metaTs: (canHitMeta ? now : (lastMetaTs || 0)),
+        metaTs: now,
         version: metaVersion || full.version || "",
         data: full.data
       });
-
       return full.data;
-    } catch (e) {
-      console.error("FULL failed:", e);
-
-      // full 失敗：有舊資料就用（並續命 ts；metaTs 若剛打過 meta 也已是 now）
-      if (cache && cache.data) {
-        writeLocalCache({
-          ts: now,
-          metaTs: (canHitMeta ? now : (lastMetaTs || 0)),
-          version: cache.version || "",
-          data: cache.data
-        });
-        return cache.data;
-      }
-      return null;
     }
+
+    // full 失敗：有舊用舊 + 續命
+    if (cacheData) {
+      writeLocalCache({ ts: now, metaTs: now, version: cacheVersion, data: cacheData });
+      return cacheData;
+    }
+
+    writeLocalCache({ ts: now, metaTs: now, version: metaVersion, data: {} });
+    return null;
   };
 
   // =========================
-  // 7) 渲染：塞進指定 container
+  // 8) 渲染
   // =========================
   const renderInto = (container, url) => {
     if (!container) return;
@@ -387,19 +371,19 @@
   };
 
   // =========================
-  // 8) 主程式：抓取所有 [data-real-price]
+  // 9) 主程式：抓取所有 [data-real-price]
   // =========================
   const init = async () => {
     const containers = document.querySelectorAll("[data-real-price]");
     if (!containers.length) return;
 
     injectStyles();
+
     const allData = await getData();
 
     containers.forEach((container) => {
       const caseName = (container.dataset.caseName || "").trim();
       if (!caseName) {
-        console.warn("實價登錄區塊未設定 data-case-name", container);
         renderInto(container, null);
         return;
       }
