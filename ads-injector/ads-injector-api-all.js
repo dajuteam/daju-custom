@@ -1,16 +1,15 @@
 /**
  * =========================================================
- * DAJU Ads Manager Frontend JS (V5.0.2)
+ * DAJU Ads Manager Frontend JS (V5.0.3-STABLE - MetaTs ONLY)
  * Global+Zones+MultiItems + Meta Stable + BFCache Fix + Deferred Cache Write
- * + ✅ MetaTs Cooldown + ✅ MetaFail Cooldown (gating only) + ✅ Debug Helper Compatible
+ * + ✅ MetaTs Cooldown ONLY + ✅ Debug Helper Compatible
  *
  * ✅ Cache payload (localStorage: daju_ads_cache)
  * {
- *   ts: number,          // 本地資料寫入時間（用來算 TTL）
- *   metaTs: number,      // 上次打 meta 的時間（用來算 META_COOLDOWN_MS）
- *   metaFailAt?: number, // meta 失敗時間（只作為時間戳 gating，抗 meta 掛掉）
- *   version: string,     // 版本號（meta 或 full 回來）
- *   data: object         // { global, zones } or legacy map
+ *   ts: number,      // 本地資料寫入時間（用來算 TTL）
+ *   metaTs: number,  // 上次嘗試打 meta 的時間（成功或失敗都算，用來算 META_COOLDOWN_MS）
+ *   version: string, // 版本號（meta 或 full 回來）
+ *   data: object     // { global, zones } or legacy map
  * }
  * =========================================================
  */
@@ -27,9 +26,6 @@
 
   // ✅ 避免 meta 風暴（TTL 過期後也不要每次都打 meta）
   const META_COOLDOWN_MS = 60 * 1000; // 60 sec
-
-  // ✅ meta 失敗後冷卻（抗 meta 掛掉：降低嘗試頻率）
-  const META_FAIL_COOLDOWN_MS = 60 * 1000; // 60 sec
 
   // ✅ fetch 超時保護
   const FETCH_TIMEOUT_MS = 8000;
@@ -319,7 +315,7 @@
   }
 
   // ==========================================
-  //  7) Smart cache logic（Meta Stable + MetaTs Cooldown + MetaFail Cooldown）
+  //  7) Smart cache logic（Meta Stable + MetaTs Cooldown ONLY）
   // ==========================================
   async function getAdsSmart(forceRefresh) {
     const now = Date.now();
@@ -361,19 +357,10 @@
     }
 
     // (D) TTL 到：meta 檢查版本（但要 cooldown）
-    // ✅ meta fail cooldown（抗 meta 掛掉：只做 gating，不做分支）
-    const lastMetaFailAt = Number(cached.metaFailAt || 0);
-    const inMetaFailCooldown = !!lastMetaFailAt && (now - lastMetaFailAt < META_FAIL_COOLDOWN_MS);
-    if (inMetaFailCooldown) {
-      // cooldown 期間：直接用舊 cache（0 request）+ 續命 ts
-      writeCache({ ...cached, ts: now });
-      return { data: cached.data, version: String(cached.version || "0") };
-    }
-
     const lastMetaTs = Number(cached.metaTs || 0);
     const canHitMeta = !lastMetaTs || (now - lastMetaTs > META_COOLDOWN_MS);
 
-    // cooldown 內：不要一直打 meta，直接用舊資料並續命 ts
+    // cooldown 內：不要一直打 meta，直接用舊資料並續命 ts（0 request）
     if (!canHitMeta) {
       writeCache({ ...cached, ts: now });
       return { data: cached.data, version: String(cached.version || "0") };
@@ -382,10 +369,9 @@
     // 可以打 meta
     const meta = await fetchMetaVersion();
 
-    // ✅ meta 失敗：只記錄失敗時間戳（gating），並用舊 cache（避免畫面空）
-    // ✅ 同時寫 metaTs（attempt cooling）：降低使用者狂刷新造成 meta 風暴
+    // meta 失敗：只做 gating（寫 metaTs=now）+ 續命 ts + 用舊 cache（避免畫面空）
     if (!meta || meta.code !== 200) {
-      writeCache({ ...cached, ts: now, metaTs: now, metaFailAt: now });
+      writeCache({ ...cached, ts: now, metaTs: now });
       return { data: cached.data, version: String(cached.version || "0") };
     }
 
@@ -394,9 +380,7 @@
 
     // 沒變：只續命，不拉 full
     if (latest && oldV === latest) {
-      const next = { ...cached, ts: now, metaTs: now };
-      if (next.metaFailAt) delete next.metaFailAt; // meta 成功後清掉 failAt，避免誤擋
-      writeCache(next);
+      writeCache({ ...cached, ts: now, metaTs: now });
       return { data: cached.data, version: oldV };
     }
 
@@ -408,11 +392,8 @@
       return { data: full.data, version: v };
     }
 
-    // fail => fallback 舊 cache（避免畫面空）
-    // ✅ 不新增任何流程分支；只續命
-    const next = { ...cached, ts: now, metaTs: now };
-    if (next.metaFailAt) delete next.metaFailAt;
-    writeCache(next);
+    // full fail => fallback 舊 cache（避免畫面空）+ 續命
+    writeCache({ ...cached, ts: now, metaTs: now });
     return { data: cached.data, version: oldV };
   }
 
