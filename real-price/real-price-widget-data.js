@@ -1,15 +1,24 @@
 /**
  * =========================================================
- * DAJU Real Price Widget (Multi Containers + Local Cache + Meta Probe + Cooldown) - v4.2
+ * DAJU Real Price Widget (Multi Containers + Local Cache + Meta Probe + Cooldown) - v4.2.1 (Ads-aligned)
  * ---------------------------------------------------------
  * ✅ 容器抓法：抓取所有 [data-real-price]，並用 data-case-name 對應網址
  *
  * 流程：
  * 1) localStorage 快取（EXPIRE_SECONDS）
- * 2) 本地快取過期時才打 meta=1 探針拿 version
+ * 2) 本地快取過期時才打 meta=1 探針拿 version（含 cooldown 防風暴）
+ *    - cooldown 內：不打 meta，直接用舊資料並 ✅ 續命 ts（Ads 同款）
+ *    - meta 失敗：有舊資料就用，並 ✅ 更新 metaTs + 續命 ts（Ads 同款）
  *    - version 沒變：續命（不打 full）
  *    - version 有變：full 會帶 v=version 更新
- * 3) META_COOLDOWN_MS：避免 meta 風暴
+ *
+ * Cache payload（One-Key）:
+ * {
+ *   ts: number,
+ *   metaTs: number,
+ *   version: string,
+ *   data: object
+ * }
  *
  * 重要：你的 Worker/GAS 需支援：
  * - ?meta=1 -> { code:200, version:"xxx", ... }
@@ -42,8 +51,6 @@
     // icon
     ICON_URL: "https://www.dajuteam.com.tw/upload/web/images/assets/real-price-pic.png"
   };
-
-
 
   // =========================
   // 1) CSS 注入（防重複）
@@ -184,7 +191,7 @@
   // {
   //   ts: number,       // 本地資料寫入時間（算 EXPIRE_SECONDS）
   //   metaTs: number,   // 上次打 meta 的時間（算 META_COOLDOWN_MS）
-  //   version: string,  // meta 版本號
+  //   version: string,  // 版本號
   //   data: object      // { case_name: url, ... }
   // }
   // =========================
@@ -215,7 +222,6 @@
   // =========================
   const fetchMetaVersion = async () => {
     const metaUrl = CONFIG.GAS_API_URL + (CONFIG.GAS_API_URL.includes("?") ? "&" : "?") + "meta=1";
-    // 你要看到的：type=real_price&meta=1 就在這一行
     const res = await fetchWithTimeout(metaUrl, CONFIG.META_TIMEOUT_MS);
     if (!res.ok) throw new Error("META HTTP " + res.status);
 
@@ -228,7 +234,6 @@
   // 5) full：拿完整資料（✅ 支援帶 v=version）
   // =========================
   const fetchFullData = async (version) => {
-    // ✅ 你要看到的：type=real_price&v=XXXX 就在這裡組
     const fullUrl = version
       ? (CONFIG.GAS_API_URL + (CONFIG.GAS_API_URL.includes("?") ? "&" : "?") + "v=" + encodeURIComponent(version))
       : CONFIG.GAS_API_URL;
@@ -264,31 +269,53 @@
     }
 
     // (B) 本地過期：先 meta gating（但要 cooldown）
-    const canHitMeta = !cache || !cache.metaTs || (now - cache.metaTs > CONFIG.META_COOLDOWN_MS);
+    const lastMetaTs = cache && cache.metaTs ? Number(cache.metaTs) : 0;
+    const canHitMeta = !lastMetaTs || (now - lastMetaTs > CONFIG.META_COOLDOWN_MS);
+
+    // ✅ cooldown 內：不打 meta，直接用舊資料並「續命 ts」（Ads 同款）
+    if (!canHitMeta) {
+      if (cache && cache.data) {
+        writeLocalCache({
+          ts: now,
+          metaTs: lastMetaTs || 0,
+          version: cache.version || "",
+          data: cache.data
+        });
+        return cache.data;
+      }
+      // 沒 cache 只能繼續走 full（不帶 v）
+    }
 
     let metaVersion = "";
+
+    // ✅ 可以打 meta：不論成功/失敗，都視為一次嘗試（要更新 metaTs）
     if (canHitMeta) {
       try {
         metaVersion = await fetchMetaVersion();
       } catch (e) {
         console.warn("META failed:", e);
 
-        // meta 失敗：有舊資料就先用（就算過期也撐）
-        if (cache && cache.data) return cache.data;
+        // meta 失敗：有舊資料就先用（並更新 metaTs + 續命 ts，Ads 同款）
+        if (cache && cache.data) {
+          writeLocalCache({
+            ts: now,
+            metaTs: now,
+            version: cache.version || "",
+            data: cache.data
+          });
+          return cache.data;
+        }
 
         // 沒舊資料：只能試 full（不帶 v）
         metaVersion = "";
       }
-    } else {
-      // cooldown 內：不要一直打 meta，有舊資料就用
-      if (cache && cache.data) return cache.data;
     }
 
     // (C) meta OK 且版本相同：續命（不打 full）
     if (cache && cache.data && metaVersion && cache.version && metaVersion === cache.version) {
       writeLocalCache({
         ts: now,
-        metaTs: now,
+        metaTs: now, // ✅ 剛打過 meta
         version: cache.version,
         data: cache.data
       });
@@ -298,16 +325,28 @@
     // (D) 版本不同 or 不能比：打 full（✅ 帶 v=metaVersion）
     try {
       const full = await fetchFullData(metaVersion);
+
       writeLocalCache({
         ts: now,
-        metaTs: now,
+        metaTs: (canHitMeta ? now : (lastMetaTs || 0)),
         version: metaVersion || full.version || "",
         data: full.data
       });
+
       return full.data;
     } catch (e) {
       console.error("FULL failed:", e);
-      if (cache && cache.data) return cache.data;
+
+      // full 失敗：有舊資料就用（並續命 ts；metaTs 若剛打過 meta 也已是 now）
+      if (cache && cache.data) {
+        writeLocalCache({
+          ts: now,
+          metaTs: (canHitMeta ? now : (lastMetaTs || 0)),
+          version: cache.version || "",
+          data: cache.data
+        });
+        return cache.data;
+      }
       return null;
     }
   };
